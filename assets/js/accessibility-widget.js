@@ -698,11 +698,11 @@ html.aw-high-contrast iframe {
     }
 
     function highlightSpokenText(text) {
+      // Limpa o marcador anterior
+      removeHighlight();
+
       const cleanChunk = text.replace(/\s+/g, ' ').trim().toLowerCase();
-      if (cleanChunk.length < 4) { // Evita destacar palavras muito pequenas
-        removeHighlight();
-        return;
-      }
+      if (cleanChunk.length < 5) return; // Evita destacar palavras muito pequenas
 
       const searchAreas = ['main', 'article', '#content', '.content', '#profile-main-content', 'body'];
       let searchArea = null;
@@ -715,13 +715,15 @@ html.aw-high-contrast iframe {
       }
       if (!searchArea) return;
 
-      // Usa TreeWalker para percorrer apenas os nós de texto, que é mais eficiente
       const walker = document.createTreeWalker(searchArea, NodeFilter.SHOW_TEXT, null, false);
       let node;
+      
+      // Itera por todos os nós de texto dentro da área de busca
       while (node = walker.nextNode()) {
         const nodeText = (node.nodeValue || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-        if (nodeText.includes(cleanChunk)) {
+        // MUDANÇA PRINCIPAL: Verifica se a frase falada CONTÉM o texto do elemento na tela
+        if (nodeText.length > 3 && cleanChunk.includes(nodeText)) {
           let elementToHighlight = node.parentElement;
 
           // Sobe na árvore DOM para encontrar um bom elemento de bloco para destacar
@@ -730,7 +732,7 @@ html.aw-high-contrast iframe {
             if (elementToHighlight === document.body) break;
             const display = window.getComputedStyle(elementToHighlight).display;
             if (display === 'block' || display === 'list-item' || elementToHighlight.tagName.match(/^H[1-6]$/)) {
-              break; // Encontrou um bom candidato
+              break;
             }
             elementToHighlight = elementToHighlight.parentElement;
             attempts++;
@@ -739,10 +741,8 @@ html.aw-high-contrast iframe {
           if (elementToHighlight) {
             const rect = elementToHighlight.getBoundingClientRect();
             
-            // Ignora elementos que não estão visíveis na tela
             if (rect.width === 0 || rect.height === 0) continue;
 
-            // Calcula a posição correta, incluindo o scroll da página
             highlighter.style.top = `${rect.top + window.scrollY}px`;
             highlighter.style.left = `${rect.left + window.scrollX}px`;
             highlighter.style.width = `${rect.width}px`;
@@ -750,12 +750,12 @@ html.aw-high-contrast iframe {
 
             highlighter.classList.add('aw-visible');
             
-            // Rola a tela para que o elemento fique centralizado
             elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return; // Para a busca assim que encontrar o primeiro resultado
           }
         }
       }
+    }
       
       // Se não encontrar o texto, esconde o marcador
       removeHighlight();
