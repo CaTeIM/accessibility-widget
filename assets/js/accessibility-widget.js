@@ -411,7 +411,7 @@
 .aw-player-btn.aw-playing .aw-pause-icon { display: block; }
 .aw-player-btn.aw-playing .aw-play-icon { display: none; }
 
-#accessibility-widget { position: fixed; right: 18px; bottom: 18px; z-index: 2147483650; font-family: var(--font-family-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+#accessibility-widget { position: fixed; right: 18px; bottom: 18px; z-index: 2147483647; font-family: var(--font-family-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; transform: translateZ(0); }
 #accessibility-widget * { box-sizing: border-box; }
 
 /* Minimized state logic */
