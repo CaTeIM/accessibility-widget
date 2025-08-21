@@ -1,0 +1,1196 @@
+// Accessibility Widget - Final (fixed getReadableText) (2025-08-19)
+// Author: CaTeIM
+// Last update: 2025-08-21
+// Fixes:
+// - Robust minimize/restore logic, harmonizing state.hidden and state.minimized.
+// - Auto-opens panel when reading starts to ensure chunk indicator is visible.
+// - Added extensive debug logging for easier diagnostics.
+// Keep using: localStorage.removeItem('aw_settings_v1'); location.reload();
+
+(function () {
+  if (window.__ACCESSIBILITY_WIDGET_LOADED__) {
+    console.warn('AccessibilityWidget: already loaded. Aborting duplicate instance.');
+    return;
+  }
+  window.__ACCESSIBILITY_WIDGET_LOADED__ = true;
+
+  const STORAGE_KEY = 'aw_settings_v1';
+
+  const safeLoad = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) { 
+      console.warn('AccessibilityWidget: invalid settings', e);
+      return {};
+    }
+  };
+
+  const safeSave = (state) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn('AccessibilityWidget: could not save settings', e);
+    }
+  };
+
+  const defaults = {
+    fontSize: 16,
+    highContrast: false,
+    disableAnimations: false,
+    rate: 1,
+    pitch: 1,
+    voiceIndex: -1,
+    hidden: false,
+    minimized: true,
+    lang: 'auto'
+  };
+
+  const saved = safeLoad();
+  const state = { ...defaults, ...saved };
+  // Ensure that if 'minimized' was never saved, it defaults to true
+  if (!Object.prototype.hasOwnProperty.call(saved, 'minimized')) {
+    state.minimized = true;
+  }
+
+  // -------------------------
+  // Language helpers
+  // -------------------------
+  const normalizeLangTag = (tag) => {
+    if (!tag) return '';
+    const lowerTag = tag.toLowerCase();
+    return lowerTag.startsWith('pt') ? 'pt-BR' : 'en-US';
+  };
+  const detectPageLanguage = () => {
+    try {
+      const htmlLang = (document.documentElement && document.documentElement.lang) ? document.documentElement.lang.trim() : '';
+      if (htmlLang) return normalizeLangTag(htmlLang);
+      const metaLang = (document.querySelector('meta[name="language"]') || {}).content || '';
+      if (metaLang) return normalizeLangTag(metaLang);
+      return 'en-US';
+    } catch (e) {
+      return 'en-US';
+    }
+  };
+  const getEffectiveLang = () => {
+    if (state.lang && state.lang !== 'auto') return state.lang;
+    return detectPageLanguage();
+  };
+
+  // -------------------------
+  // Spoken email conversion
+  // -------------------------
+  const spokenEmail = (text, langTag) => {
+    if (!text) return text;
+    try {
+      langTag = langTag || getEffectiveLang();
+      const replaceLogic = langTag.startsWith('pt') ?
+        { at: 'arroba', domain: ' ponto ' } : { at: 'at', domain: ' dot ' };
+      return text.replace(/([^\s@]+)@([^\s@]+)/g, (match, local, domain) => {
+        const spokenDomain = domain.split('.').map(p => p.trim()).filter(Boolean).join(replaceLogic.domain);
+        return `${local.trim()} ${replaceLogic.at} ${spokenDomain}`.trim();
+      });
+    } catch (e) {
+      return text;
+    }
+  };
+
+    // -------------------------
+    // Domain protection & chunking
+    // -------------------------
+    function normalizeTextForReading(text) {
+      if (!text) return '';
+
+      const lang = getEffectiveLang();
+      const isPt = lang.startsWith('pt');
+      const at = isPt ? ' arroba ' : ' at ';
+      const dot = isPt ? ' ponto ' : ' dot ';
+
+      // 1. Lida com e-mails primeiro, convertendo-os para uma forma falada
+      text = text.replace(/([^\s@]+)@([^\s@]+)/g, (match, local, domain) => {
+          const spokenDomain = domain.replace(/\./g, dot);
+          return `${local.trim()}${at}${spokenDomain}`.trim();
+      });
+
+      // 2. Lida com domínios/URLs que não são e-mails
+      // A regex usa "negative lookbehind" ((?<!@)) para não pegar e-mails de novo
+      // e ((?<!\d)) para não pegar números como 1.50
+      text = text.replace(/(?<!@|\d)\b([a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z.]{2,})\b/g, (match) => {
+          // Ignora abreviações comuns para não estragá-las (ex: U.S.A.)
+          if (match.match(/^[A-Z]\.[A-Z]/)) {
+              return match;
+          }
+          return match.replace(/\./g, dot);
+      });
+
+      // 3. Normaliza quebras de linha e pontuação para pausas corretas
+      let t = text.replace(/\r\n?/g, '\n').replace(/\n{2,}/g, '.\n').replace(/\n/g, '. ');
+      try {
+          // Adiciona espaço após pontuação para separar frases
+          t = t.replace(/([.!?…])(\p{Lu}|\d|["'“”])/gu, '$1 $2');
+      } catch (e) {
+          t = t.replace(/([.!?…])([A-Z0-9"'])/g, '$1 $2');
+      }
+
+      // 4. Limpeza final
+      t = t.replace(/\s{2,}/g, ' ').trim();
+      return t;
+    }
+    function splitToChunks(text, maxLen = 220) {
+      text = normalizeTextForReading(text);
+      if (!text) return [];
+      const sentenceRegex = /[^.!?…]+[.!?…]?/g;
+      const sentences = text.match(sentenceRegex) || [text];
+      const chunks = [];
+      for (let s of sentences) {
+        s = s.trim();
+        if (!s) continue;
+        if (s.length <= maxLen) chunks.push(s);
+        else {
+          const parts = s.split(/[,;:]+/g);
+          let buffer = '';
+          parts.forEach((p, idx) => {
+            const piece = p.trim() + (idx < parts.length - 1 ? ',' : '');
+            if ((buffer + ' ' + piece).trim().length <= maxLen) buffer = (buffer + ' ' + piece).trim();
+            else {
+              if (buffer) chunks.push(buffer);
+              if (piece.length > maxLen) {
+                const words = piece.split(' ');
+                let sub = '';
+                words.forEach(w => {
+                  if ((sub + ' ' + w).trim().length <= maxLen) sub = (sub + ' ' + w).trim();
+                  else { if (sub) chunks.push(sub); sub = w; }
+                });
+                if (sub) chunks.push(sub);
+                buffer = '';
+              } else buffer = piece;
+            }
+          });
+          if (buffer) chunks.push(buffer);
+        }
+      }
+      console.debug('AW: Generated chunks:', chunks.length);
+      return chunks;
+    }
+    function pauseForChunkEnd(text) {
+      if (!text) return 180;
+      const last = text.trim().slice(-1);
+      if (/[.!?…]/.test(last)) return 520;
+      if (/[,;:]/.test(last)) return 260;
+      return 180;
+    }
+
+    // -------------------------
+    // Interactive prefix helper
+    // -------------------------
+    function getInteractivePrefix(el, tag, langTag) {
+      const isPt = (langTag || '').toLowerCase().startsWith('pt');
+      try {
+        const role = (el.getAttribute && (el.getAttribute('role') || '') || '').toLowerCase();
+        const type = (el.type || '').toLowerCase();
+        const t = (pt, en) => (isPt ? pt : en);
+
+        if (tag === 'button' || role === 'button' || ['button','submit','reset'].includes(type)) {
+          return t('Botão ', 'Button ');
+        }
+        if (tag === 'a' || role === 'link' || (tag === 'area')) {
+          return t('Link ', 'Link ');
+        }
+        if (tag === 'input') {
+          switch (type) {
+            case 'checkbox': return t('Caixa de seleção ', 'Checkbox ');
+            case 'radio': return t('Opção ', 'Radio option ');
+            case 'file': return t('Campo de arquivo ', 'File input ');
+            case 'email': return t('Campo de e-mail ', 'Email field ');
+            case 'password': return t('Campo de senha ', 'Password field ');
+            case 'search': return t('Campo de busca ', 'Search field ');
+            case 'tel': return t('Campo de telefone ', 'Telephone field ');
+            case 'url': return t('Campo de URL ', 'URL field ');
+            case 'number': return t('Campo numérico ', 'Number field ');
+            case 'submit': case 'button': case 'reset': return t('Botão ', 'Button ');
+            default: return t('Campo de texto ', 'Text field ');
+          }
+        }
+        if (tag === 'textarea') return t('Campo de texto ', 'Text area ');
+        if (tag === 'select') return t('Menu ', 'Dropdown ');
+        if (tag === 'label') return t('Rótulo ', 'Label ');
+        if (role) {
+          if (role.indexOf('button') !== -1) return t('Botão ', 'Button ');
+          if (role.indexOf('link') !== -1) return t('Link ', 'Link ');
+          if (role.indexOf('checkbox') !== -1) return t('Caixa de seleção ', 'Checkbox ');
+          if (role.indexOf('textbox') !== -1) return t('Campo de texto ', 'Text field ');
+        }
+        return '';
+      } catch (e) {
+        return '';
+      }
+    }
+
+    // -------------------------
+    // Node -> text extractor (with interactive prefixes)
+    // -------------------------
+    function nodeToText(node) {
+      try {
+        const clone = node.cloneNode(true);
+
+        const interactive = clone.querySelectorAll('button, a, input, textarea, select, label, [role]');
+        interactive.forEach(el => {
+          let label = '';
+          const tag = (el.tagName || '').toLowerCase();
+          try {
+            label = el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || el.getAttribute('value')) || '';
+            if (!label) {
+              const ariaLabBy = el.getAttribute && el.getAttribute('aria-labelledby');
+              if (ariaLabBy) {
+                const ref = clone.querySelector('#' + ariaLabBy);
+                if (ref) label = (ref.innerText || ref.textContent || '').trim();
+              }
+            }
+            if (!label) label = (el.innerText || el.textContent || '').trim();
+            if (typeof label === 'string') label = label.trim();
+            if (!label) {
+              const type = (el.type || '').toLowerCase();
+              if (tag === 'input' && type) label = type;
+              else if (tag === 'a') label = (el.getAttribute && el.getAttribute('href')) ? el.getAttribute('href') : '';
+            }
+          } catch (e) { label = ''; }
+
+          const prefix = getInteractivePrefix(el, tag, (typeof getEffectiveLang === 'function' ? getEffectiveLang() : 'pt-BR'));
+          let spoken = (label || '').toString().trim();
+
+          if (!spoken) {
+            const isPt = (typeof getEffectiveLang === 'function' ? getEffectiveLang().toLowerCase().startsWith('pt') : true);
+            spoken = isPt ? 'sem rótulo' : 'unlabeled';
+          }
+
+          let replacementText = '';
+          if (prefix) replacementText = (prefix + spoken).trim();
+          else replacementText = spoken.trim();
+
+          if (replacementText) {
+            const last = replacementText.slice(-1);
+            if (!/[.!?…:;]$/.test(last)) replacementText = replacementText + '.';
+          } else {
+            replacementText = '';
+          }
+
+          console.debug(`AW: nodeToText replacing <${tag}> with: "${replacementText}"`);
+          const replacement = document.createElement('span');
+          replacement.textContent = replacementText + ' ';
+          if (el.parentNode) el.parentNode.replaceChild(replacement, el);
+        });
+
+        // Header heuristics
+        const headerSelectors = 'header, nav, .navbar-custom, .site-header, #header';
+        const headers = clone.querySelectorAll(headerSelectors);
+        headers.forEach(h => {
+          try {
+            const txt = (h.innerText || h.textContent || '').trim();
+            if (!txt) return;
+            if (!/^\s*\.\s*/.test(h.textContent || '')) {
+              const prefix = document.createTextNode('. ');
+              h.parentNode && h.parentNode.insertBefore(prefix, h);
+            }
+            if (!/[.!?…]\s*$/.test(h.textContent || '')) {
+              const sep = document.createTextNode('. ');
+              if (h.nextSibling) h.parentNode.insertBefore(sep, h.nextSibling);
+              else h.appendChild(sep);
+            }
+          } catch (e) {}
+        });
+
+        // Block separators
+        const blockSelectors = 'h1,h2,h3,h4,h5,h6,p,li,label,section,div.profile-section,div.card-custom,dt,dd,tbody,tr,th,td,header,footer,div';
+        const blocks = clone.querySelectorAll(blockSelectors);
+        blocks.forEach(el => {
+          try {
+            if (el.dataset && el.dataset.awSep) return;
+            const txt = (el.innerText || el.textContent || '').trim();
+            if (!txt) return;
+            const sepNode = document.createTextNode('. ');
+            if (el.nextSibling) el.parentNode.insertBefore(sepNode, el.nextSibling);
+            else el.appendChild(sepNode);
+            if (el.dataset) el.dataset.awSep = '1';
+          } catch (e) {}
+        });
+
+        // Remove noisy elements
+        const remove = clone.querySelectorAll('script, style, noscript, iframe, svg, img, video');
+        remove.forEach(r => r.remove());
+
+        let text = clone.innerText || clone.textContent || '';
+        text = spokenEmail(text, getEffectiveLang());
+        text = text.replace(/\s{2,}/g, ' ').replace(/\s*\.\s*\.\s*/g, '. ').trim();
+        if (text && !/[.!?…]$/.test(text.slice(-1))) text = text + '.';
+        return text;
+      } catch (e) {
+        console.warn('AccessibilityWidget.nodeToText error', e);
+        try { return (node.innerText || node.textContent || '').replace(/\s{2,}/g, ' ').trim(); } catch (ee) { return ''; }
+      }
+    }
+
+    // -------------------------
+    // getReadableText (RESTORED) - aggregates header + main or body
+    // -------------------------
+    function getReadableText() {
+      try {
+        const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
+        let headerText = '';
+        for (let sel of headerCandidates) {
+          const h = document.querySelector(sel);
+          if (h) {
+            const t = nodeToText(h);
+            if (t && t.length > 5) { headerText = t; break; }
+          }
+        }
+        const selectors = ['main', 'article', '#content', '.content', '#profile-main-content'];
+        for (let s of selectors) {
+          const el = document.querySelector(s);
+          if (el) {
+            const t = nodeToText(el);
+            if (t && t.length > 20) {
+                const fullText = (headerText ? (headerText + ' ' + t) : t).trim();
+                console.debug('AW: Readable text length:', fullText.length);
+                return fullText;
+            }
+          }
+        }
+        const bodyText = nodeToText(document.body) || '';
+        const fullText = (headerText ? (headerText + ' ' + bodyText) : bodyText).trim();
+        console.debug('AW: Readable text length (fallback to body):', fullText.length);
+        return fullText;
+      } catch (e) { console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || ''; }
+    }
+
+    // -------------------------
+    // UI & CSS (include indicator styles)
+    // -------------------------
+    const css = `
+/* Helper class for visibility toggling */
+.aw-hidden { display: none !important; }
+
+#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: var(--btn-primary-bg,#4b7bec); }
+#aw-floating-btn img { width: 35px; height: 35px; filter: invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%); }
+
+/* Estilos para o Miniplayer Flutuante */
+.aw-miniplayer { position: absolute; right: 68px; bottom: 0; height: 50px; display: none; align-items: center; gap: 8px; background: var(--card-bg, linear-gradient(145deg,#2f3542,#343a4a)); padding: 0 12px 0 8px; border-radius: 25px; box-shadow: 0 6px 18px rgba(0,0,0,.25); color: var(--panel-text, #e6eef8); animation: fadeInMiniplayer 0.3s ease; }
+
+/* Classe que vamos usar no JS para mostrar o miniplayer */
+#accessibility-widget.aw-miniplayer-visible .aw-miniplayer { display: flex; }
+.aw-miniplayer-controls { display: flex; align-items: center; gap: 4px; }
+.aw-mini-btn { width: 36px; height: 36px; border-radius: 50%; background: transparent; color: inherit; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; padding: 0; }
+.aw-mini-btn svg { width: 18px; height: 18px; }
+.aw-miniplayer-chunk { font-size: 13px; color: var(--small-text,#d8e6f5); white-space: nowrap; }
+
+/* Reutilizando a lógica de play/pause para o miniplayer */
+#aw-mini-playpause .aw-pause-icon { display: none; }
+#aw-mini-playpause .aw-play-icon { display: block; }
+#aw-mini-playpause.aw-playing .aw-pause-icon { display: block; }
+#aw-mini-playpause.aw-playing .aw-play-icon { display: none; }
+
+@keyframes fadeInMiniplayer {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+#accessibility-widget select option { color: #212529; }
+
+/* Estilo para o botão minimizar */
+#aw-minimize-btn.aw-minimize { background: var(--btn-primary-bg, #4b7bec); color: #fff; border: none; width: 32px; height: 32px; font-size: 16px; line-height: 1; }
+
+/* Estilos para os ícones SVG dentro dos botões do player */
+.aw-player-btn svg { width: 65%; height: 65%; fill: currentColor; pointer-events: none; }
+
+/* Lógica para mostrar/esconder ícone de play/pause */
+.aw-player-btn .aw-pause-icon { display: none; }
+.aw-player-btn .aw-play-icon { display: block; }
+.aw-player-btn.aw-playing .aw-pause-icon { display: block; }
+.aw-player-btn.aw-playing .aw-play-icon { display: none; }
+
+#accessibility-widget { position: fixed; right: 18px; bottom: 18px; z-index: 2147483650; font-family: var(--font-family-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+#accessibility-widget * { box-sizing: border-box; }
+
+/* Minimized state logic */
+#accessibility-widget.aw-minimized .aw-panel { display: none; }
+#accessibility-widget.aw-minimized .aw-float { display: flex; }
+#accessibility-widget:not(.aw-minimized) .aw-panel { display: block; }
+#accessibility-widget:not(.aw-minimized) .aw-float { display: none; }
+
+#accessibility-widget .aw-panel { width:380px; max-width:95vw; background: var(--card-bg, linear-gradient(145deg,#2f3542,#343a4a)); color: var(--panel-text, #e6eef8); border-radius:10px; box-shadow:0 12px 34px rgba(0,0,0,.45); padding:12px; border:1px solid rgba(255,255,255,0.04); font-size:14px; }
+#accessibility-widget .aw-title { color: var(--title-muted,#cfd8e3); margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; }
+#accessibility-widget .aw-title strong { color: var(--title, #eef6ff); font-weight:600; }
+#accessibility-widget .aw-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+#accessibility-widget button, #accessibility-widget select, #accessibility-widget input { font: inherit; }
+
+#accessibility-widget button { padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.02); color:inherit; cursor:pointer; }
+#accessibility-widget .aw-small { font-size:13px; color:var(--small-text,#d8e6f5); }
+
+/* active state */
+.aw-toggle-active { background: var(--btn-primary-bg, #4b7bec) !important; color: #fff !important; box-shadow:0 6px 18px rgba(75,123,236,0.18) !important; }
+
+.aw-player { display:flex; gap:10px; align-items:center; justify-content:center; margin:6px 0 6px 0; }
+.aw-player-btn { width:44px; height:44px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:16px; border:none; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.25); background:var(--btn-primary-bg,#4b7bec); color:#fff; }
+.aw-player-btn.secondary { background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--nord3,#cfd8e3); }
+.aw-player-btn[disabled] { opacity:0.38; pointer-events:none; box-shadow:none; }
+.aw-player-active .aw-player-btn.secondary { background: var(--btn-primary-bg,#4b7bec); color: #fff; border: none; box-shadow:0 6px 18px rgba(75,123,236,0.18); }
+
+/* chunk indicator */
+#aw-chunk-indicator { display:none; align-items:center; gap:8px; margin:6px 6px 10px 6px; }
+#aw-chunk-indicator.aw-indicator-visible { display: flex; }
+#aw-chunk-indicator .aw-chunk-text { font-size:13px; color:var(--small-text,#d8e6f5); min-width:86px; text-align:left; }
+#aw-chunk-indicator .aw-chunk-bar { flex:1; height:8px; background: rgba(255,255,255,0.06); border-radius:999px; overflow:hidden; }
+#aw-chunk-indicator .aw-chunk-fill { height:100%; width:0%; background:var(--btn-primary-bg,#4b7bec); border-radius:999px; transition:width .18s linear; }
+
+.aw-actions-top { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+.aw-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+.aw-language-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.aw-sliders { display:flex; flex-direction:column; gap:10px; margin-bottom:8px; }
+
+.aw-bottom-actions { display:flex; gap:10px; align-items:center; margin-top:8px; }
+.aw-bottom-actions .aw-full { flex:1; text-align:center; }
+
+.aw-voice-select, .aw-lang-select { width:100%; padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.02); color:inherit; }
+
+#accessibility-widget input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 10px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--btn-primary-bg, #4b7bec) 0%, var(--btn-primary-bg, #4b7bec) var(--aw-range-fill, 40%), rgba(255,255,255,0.06) var(--aw-range-fill, 40%));
+  outline: none; padding: 0; margin: 0; box-shadow: inset 0 1px 2px rgba(0,0,0,0.12);
+}
+#accessibility-widget input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--btn-primary-bg, #4b7bec); box-shadow: 0 2px 6px rgba(0,0,0,0.25); cursor: pointer; }
+#accessibility-widget input[type="range"]::-moz-range-track { background: rgba(255,255,255,0.06); height: 10px; border-radius: 999px; }
+#accessibility-widget input[type="range"]::-moz-range-progress { background: var(--btn-primary-bg, #4b7bec); height: 10px; border-radius: 999px; }
+#accessibility-widget input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--btn-primary-bg, #4b7bec); cursor:pointer; }
+
+html.aw-high-contrast #accessibility-widget .aw-panel,
+body.aw-high-contrast #accessibility-widget .aw-panel,
+#accessibility-widget.aw-high-contrast .aw-panel {
+  background: #000 !important; color: #fff !important; border-color: #444 !important;
+}
+html.aw-high-contrast #accessibility-widget button,
+body.aw-high-contrast #accessibility-widget button {
+  background: #222 !important; color: #fff !important; border-color: #555 !important;
+}
+
+html.aw-disable-animations *, body.aw-disable-animations *, #accessibility-widget.aw-disable-animations * {
+  animation: none !important; transition: none !important;
+}
+
+@media (max-width:420px) {
+  #accessibility-widget .aw-panel { width:94vw; padding:10px; }
+  .aw-player { gap:8px; }
+  .aw-player-btn { width:40px; height:40px; font-size:15px; }
+}
+`;
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.appendChild(document.createTextNode(css));
+    document.head.appendChild(style);
+
+    const GLOBAL_CONTRAST_STYLE_ID = 'aw-global-contrast-style';
+function injectGlobalContrastStyles() {
+      if (document.getElementById(GLOBAL_CONTRAST_STYLE_ID)) return;
+      const s = document.createElement('style');
+      s.id = GLOBAL_CONTRAST_STYLE_ID;
+      s.type = 'text/css';
+      s.appendChild(document.createTextNode(`
+/* AW global high contrast (AGRESSIVO) */
+html.aw-high-contrast,
+html.aw-high-contrast body {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Força TODOS os elementos a terem fundo preto e texto branco */
+html.aw-high-contrast * {
+  background-color: #000 !important;
+  color: #fff !important;
+  border-color: #fff !important; /* Deixa as bordas visíveis */
+  box-shadow: none !important; /* Remove sombras que podem atrapalhar */
+}
+
+/* Regras específicas para manter a usabilidade */
+html.aw-high-contrast a,
+html.aw-high-contrast a * { /* Links e qualquer coisa dentro deles */
+  color: #6fe3ff !important; /* Ciano para links, se destaca no preto */
+  text-decoration: underline !important;
+}
+
+html.aw-high-contrast button,
+html.aw-high-contrast input,
+html.aw-high-contrast select,
+html.aw-high-contrast textarea {
+  background-color: #111 !important; /* Um cinza escuro para campos */
+  border: 1px solid #888 !important;
+}
+
+/* Exceções: não queremos inverter imagens, vídeos, etc. */
+html.aw-high-contrast img,
+html.aw-high-contrast video,
+html.aw-high-contrast svg,
+html.aw-high-contrast iframe {
+  background-color: transparent !important; /* Mantém o fundo original */
+  filter: grayscale(80%) contrast(200%); /* Aumenta o contraste da imagem sem inverter */
+}
+`));
+      document.head.appendChild(s);
+    }
+    function removeGlobalContrastStyles() {
+      const el = document.getElementById(GLOBAL_CONTRAST_STYLE_ID);
+      if (el) el.remove();
+    }
+
+    // -------------------------
+    // Build DOM
+    // -------------------------
+    const root = document.createElement('div');
+    root.id = 'accessibility-widget';
+    root.setAttribute('aria-hidden', 'false');
+    root.innerHTML = `
+      <button class="aw-float" id="aw-floating-btn" title="Acessibilidade (Abrir)" aria-label="Abrir acessibilidade">
+        <img src="assets/accessibility.svg" alt="Ícone de Acessibilidade" />
+      </button>
+      <div class="aw-miniplayer" id="aw-miniplayer">
+        <div class="aw-miniplayer-chunk" id="aw-mini-chunk-text">Trecho: 0 / 0</div>
+        <div class="aw-miniplayer-controls">
+          <button id="aw-mini-prev" class="aw-mini-btn" title="Voltar" aria-label="Voltar">
+            <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+          <button id="aw-mini-playpause" class="aw-mini-btn" title="Pausar" aria-label="Pausar">
+            <svg class="aw-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="aw-pause-icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+          </button>
+          <button id="aw-mini-next" class="aw-mini-btn" title="Avançar" aria-label="Avançar">
+            <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="aw-panel" id="aw-panel" role="region" aria-label="Acessibilidade">
+        <div class="aw-title">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <strong>Acessibilidade</strong>
+            <span style="font-size:12px;color:var(--title-muted,#cfd8e3);">(Alt+M)</span>
+          </div>
+          <div>
+            <button id="aw-minimize-btn" class="aw-minimize" title="Minimizar" aria-label="Minimizar">─</button>
+          </div>
+        </div>
+
+        <div class="aw-player" role="group" aria-label="Controles de reprodução">
+          <button id="aw-prev" class="aw-player-btn secondary" title="Voltar (trecho anterior)" aria-label="Voltar">
+            <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+          <button id="aw-playpause" class="aw-player-btn" title="Ler / Pausar" aria-label="Ler">
+            <svg class="aw-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="aw-pause-icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+          </button>
+          <button id="aw-next" class="aw-player-btn secondary" title="Avançar (próximo trecho)" aria-label="Avançar">
+            <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"/></svg>
+          </button>
+          <button id="aw-stop" class="aw-player-btn secondary" title="Parar" aria-label="Parar">
+            <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+          </button>
+        </div>
+
+        <div id="aw-chunk-indicator" aria-hidden="true">
+          <div class="aw-chunk-text" id="aw-chunk-text">Trecho: 0 / 0</div>
+          <div class="aw-chunk-bar" aria-hidden="true"><div class="aw-chunk-fill" id="aw-chunk-fill" style="width:0%"></div></div>
+        </div>
+
+        <div class="aw-actions-top">
+          <button id="aw-increase" title="Aumentar fonte" aria-pressed="false">A+</button>
+          <button id="aw-decrease" title="Diminuir fonte" aria-pressed="false">A-</button>
+          <button id="aw-contrast" title="Alto contraste" aria-pressed="false">Contraste</button>
+          <button id="aw-animations" title="Desativar animações" aria-pressed="false">Animações</button>
+        </div>
+
+        <div class="aw-language-row">
+          <select id="aw-lang" class="aw-lang-select aw-small" aria-label="Idioma" style="min-width:120px;">
+            <option value="auto">Auto</option>
+            <option value="pt-BR">Português (pt-BR)</option>
+            <option value="en-US">English (en-US)</option>
+          </select>
+          <select id="aw-voice" class="aw-voice-select" aria-label="Selecione voz"><option>Carregando vozes...</option></select>
+        </div>
+
+        <div class="aw-sliders">
+          <div>
+            <label class="aw-small" for="aw-rate">Velocidade</label>
+            <input id="aw-rate" type="range" min="0.6" max="1.6" step="0.05" value="${state.rate}">
+            <div class="aw-small" id="aw-rate-val">${(state.rate||defaults.rate).toFixed(2)}</div>
+          </div>
+          <div>
+            <label class="aw-small" for="aw-pitch">Pitch</label>
+            <input id="aw-pitch" type="range" min="0.6" max="1.6" step="0.05" value="${state.pitch}">
+            <div class="aw-small" id="aw-pitch-val">${(state.pitch||defaults.pitch).toFixed(2)}</div>
+          </div>
+        </div>
+
+        <div class="aw-bottom-actions">
+          <button id="aw-read" class="aw-btn-primary aw-full" style="flex:1;">Ler tudo</button>
+          <button id="aw-read-selection" class="aw-btn-primary aw-full" style="flex:1; background: rgba(255,255,255,0.04); color:inherit;">Ler seleção</button>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+          <div class="aw-small">Fonte: <span id="aw-font-size">${state.fontSize}px</span></div>
+          <div class="aw-small">Versão: 1.61</div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    // Element refs
+    const floatingBtn = document.getElementById('aw-floating-btn');
+    const panel = document.getElementById('aw-panel');
+    const btnMinimize = document.getElementById('aw-minimize-btn');
+    const btnIncrease = document.getElementById('aw-increase');
+    const btnDecrease = document.getElementById('aw-decrease');
+    const btnContrast = document.getElementById('aw-contrast');
+    const btnAnimations = document.getElementById('aw-animations');
+    const selectLang = document.getElementById('aw-lang');
+    const selectVoice = document.getElementById('aw-voice');
+    const inputRate = document.getElementById('aw-rate');
+    const inputPitch = document.getElementById('aw-pitch');
+    const spanRateVal = document.getElementById('aw-rate-val');
+    const spanPitchVal = document.getElementById('aw-pitch-val');
+    const btnPrev = document.getElementById('aw-prev');
+    const btnPlay = document.getElementById('aw-playpause');
+    const btnNext = document.getElementById('aw-next');
+    const btnStop = document.getElementById('aw-stop');
+    const btnRead = document.getElementById('aw-read');
+    const btnReadSelection = document.getElementById('aw-read-selection');
+    const spanFontSize = document.getElementById('aw-font-size');
+
+    // Referências do Miniplayer
+    const miniPlayer = document.getElementById('aw-miniplayer');
+    const btnMiniPrev = document.getElementById('aw-mini-prev');
+    const btnMiniPlay = document.getElementById('aw-mini-playpause');
+    const btnMiniNext = document.getElementById('aw-mini-next');
+    const miniChunkText = document.getElementById('aw-mini-chunk-text');
+  
+    // Indicator refs
+    const chunkIndicator = document.getElementById('aw-chunk-indicator');
+    const chunkText = document.getElementById('aw-chunk-text');
+    const chunkFill = document.getElementById('aw-chunk-fill');
+
+    // -------------------------
+    // Speech synthesis setup
+    // -------------------------
+    const synth = window.speechSynthesis;
+    let voices = [];
+
+    function populateVoices() {
+      try {
+        voices = synth ? synth.getVoices() : [];
+        selectVoice.innerHTML = '';
+        if (!voices || !voices.length) {
+          const opt = document.createElement('option'); opt.textContent = (getEffectiveLang().startsWith('pt') ? 'Voz do navegador (padrão)' : 'Default browser voice'); opt.value = -1; selectVoice.appendChild(opt); return;
+        }
+        const defaultOpt = document.createElement('option'); defaultOpt.textContent = (getEffectiveLang().startsWith('pt') ? 'Voz do navegador (padrão)' : 'Default browser voice'); defaultOpt.value = -1; selectVoice.appendChild(defaultOpt);
+        voices.forEach((v, idx) => {
+          const o = document.createElement('option');
+          o.value = idx;
+          o.textContent = `${v.name} — ${v.lang}${v.default ? ' (default)' : ''}`;
+          selectVoice.appendChild(o);
+        });
+        if (typeof state.voiceIndex === 'number' && state.voiceIndex >= 0 && state.voiceIndex < voices.length) selectVoice.value = state.voiceIndex;
+        else {
+          const eff = getEffectiveLang().split('-')[0];
+          const match = voices.findIndex(v => (v.lang || '').toLowerCase().startsWith(eff));
+          selectVoice.value = match >= 0 ? match : -1;
+        }
+      } catch (e) { console.warn('populateVoices', e); }
+    }
+    if (synth) {
+      populateVoices();
+      if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = populateVoices;
+    } else {
+      selectVoice.innerHTML = '<option>Text-to-speech not supported</option>';
+    }
+
+    // -------------------------
+    // TTS runtime + indicator
+    // -------------------------
+    let utterQueue = [];
+    let globalCurrentIndex = 0;
+    let isPaused = false;
+    let pendingNextIndex = null;
+    let lastChunks = [];
+    let isPlaying = false;
+    let lastReadMode = null;
+    let currentUtterIdx = -1;
+
+    function updateChunkIndicator() {
+      try {
+        if (!lastChunks || !lastChunks.length) {
+          chunkIndicator.classList.remove('aw-indicator-visible');
+          return;
+        }
+        let displayIndex = 0;
+        if (currentUtterIdx >= 0) displayIndex = currentUtterIdx + 1;
+        else displayIndex = Math.min(globalCurrentIndex + 1, lastChunks.length);
+
+        const total = lastChunks.length;
+        const textContent = `Trecho: ${Math.max(1, displayIndex)} / ${total}`;
+        
+        // Atualiza os dois indicadores
+        chunkIndicator.classList.add('aw-indicator-visible');
+        chunkText.textContent = textContent;
+        miniChunkText.textContent = textContent;
+
+        const pct = total <= 1 ? 100 : Math.round(((Math.max(0, (displayIndex - 1)) / (total - 1)) * 100));
+        chunkFill.style.width = pct + '%';
+      } catch (e) { /* noop */ }
+    }
+
+    function updatePlayerUI() {
+      try {
+        if (isPlaying && !isPaused) {
+          btnPlay.classList.add('aw-playing');
+          btnMiniPlay.classList.add('aw-playing');
+          btnPlay.title = getUiString('pause');
+          btnPlay.setAttribute('aria-label', getUiString('pause'));
+        } else {
+          btnPlay.classList.remove('aw-playing');
+          btnMiniPlay.classList.remove('aw-playing');
+          btnPlay.title = getUiString('play');
+          btnPlay.setAttribute('aria-label', getUiString('play'));
+        }
+        if (!lastChunks || !lastChunks.length) {
+          btnPrev.setAttribute('disabled','disabled'); btnNext.setAttribute('disabled','disabled'); btnStop.setAttribute('disabled','disabled');
+        } else {
+          btnPrev.removeAttribute('disabled'); btnNext.removeAttribute('disabled'); btnStop.removeAttribute('disabled');
+        }
+
+        if (isPlaying || isPaused) root.classList.add('aw-player-active'); else root.classList.remove('aw-player-active');
+
+        if ((isPlaying || isPaused) && lastReadMode === 'page') btnRead.classList.add('aw-toggle-active'); else btnRead.classList.remove('aw-toggle-active');
+        if ((isPlaying || isPaused) && lastReadMode === 'selection') btnReadSelection.classList.add('aw-toggle-active'); else btnReadSelection.classList.remove('aw-toggle-active');
+
+        updateChunkIndicator();
+      } catch (e) { console.warn('updatePlayerUI', e); }
+    }
+
+    function speakChunksSequentially(chunks, startIndex = 0) {
+      if (!synth) { alert(getUiString('tts_not_supported')); return; }
+      stopReading();
+      if (!Array.isArray(chunks) || !chunks.length) {
+        lastChunks = [];
+        updatePlayerUI();
+        return;
+      }
+
+      console.debug(`AW: speakChunksSequentially starting with ${chunks.length} chunks from index ${startIndex}`);
+      lastChunks = chunks.slice(0);
+      globalCurrentIndex = Math.max(0, Math.min(startIndex, lastChunks.length - 1));
+      utterQueue = []; isPaused = false; pendingNextIndex = null; isPlaying = true; currentUtterIdx = -1;
+
+      for (let i = 0; i < lastChunks.length; i++) {
+        const u = new SpeechSynthesisUtterance(lastChunks[i]);
+        u.rate = state.rate || defaults.rate;
+        u.pitch = state.pitch || defaults.pitch;
+        try {
+          const vi = parseInt(selectVoice.value || -1, 10);
+          if (!isNaN(vi) && vi >= 0 && voices[vi]) { u.voice = voices[vi]; u.lang = voices[vi].lang || getEffectiveLang(); }
+          else u.lang = getEffectiveLang();
+        } catch (e) { u.lang = getEffectiveLang(); }
+        u._idx = i;
+
+        u.onstart = function () {
+          console.debug('AW: utter start', u._idx);
+          currentUtterIdx = u._idx;
+          updatePlayerUI();
+        };
+
+        u.onend = function () {
+          console.debug('AW: utter end', u._idx);
+          currentUtterIdx = -1;
+          // Se não estivermos pausando, avance para o próximo trecho.
+          if (!isPaused) {
+            globalCurrentIndex = u._idx + 1;
+            const delay = pauseForChunkEnd(u.text) || 200;
+            setTimeout(() => {
+              if (isPaused) return; // Checagem extra de segurança
+              const nextIdx = u._idx + 1;
+              if (nextIdx < utterQueue.length) {
+                try { synth.speak(utterQueue[nextIdx]); } catch (e) { console.warn(e); }
+              } else {
+                isPlaying = false;
+                updatePlayerUI();
+              }
+            }, delay);
+          }
+        };
+        u.onerror = function (e) { console.warn('utterance error', e); };
+
+        utterQueue.push(u);
+      }
+
+      updatePlayerUI(); // IMPORTANT: Update UI immediately to show indicator
+
+      try {
+        if (startIndex < utterQueue.length) {
+          synth.speak(utterQueue[startIndex]);
+          globalCurrentIndex = startIndex;
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    function stopReading() {
+      try { if (synth) synth.cancel(); } catch (e) {}
+      utterQueue = [];
+      isPaused = false;
+      pendingNextIndex = null;
+      isPlaying = false;
+      lastChunks = [];
+      globalCurrentIndex = 0;
+      lastReadMode = null;
+      currentUtterIdx = -1;
+      btnRead.classList.remove('aw-toggle-active');
+      btnReadSelection.classList.remove('aw-toggle-active');
+      root.classList.remove('aw-player-active');
+      updatePlayerUI();
+    }
+
+    function pauseResume() {
+      if (!synth) return;
+      try {
+        if (isPaused) {
+          // LÓGICA DE RETOMAR
+          isPaused = false;
+          isPlaying = true;
+          updatePlayerUI();
+          // Se a fala foi interrompida e temos um próximo trecho pendente, comece por ele.
+          if (pendingNextIndex !== null && pendingNextIndex < lastChunks.length) {
+            speakChunksSequentially(lastChunks, pendingNextIndex);
+          } else {
+            // Senão, apenas continue a fala que já estava pausada no navegador.
+            synth.resume();
+          }
+        } else if (isPlaying) {
+          // LÓGICA DE PAUSAR
+          isPaused = true;
+          // Guarda o índice do trecho atual para saber de onde voltar.
+          pendingNextIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
+          synth.pause(); // Usa o pause nativo que é mais simples
+          updatePlayerUI();
+        }
+      } catch (err) { console.warn('pauseResume error', err); }
+    }
+
+    function readPage(fromIndex = 0) {
+      // FIX: Ensure panel is open to show indicator
+      if (state.minimized) {
+        state.minimized = false;
+        safeSave(state);
+        applyUI();
+      }
+      try {
+        const text = getReadableText();
+        if (!text || text.length < 2) { alert(getUiString('no_text')); return; }
+        const chunks = splitToChunks(text, 220);
+        lastReadMode = 'page';
+        speakChunksSequentially(chunks, fromIndex || 0);
+      } catch (e) { console.error('readPage error', e); alert(getUiString('error_start')); }
+    }
+
+    function readSelection(fromIndex = 0) {
+      // FIX: Ensure panel is open to show indicator
+      if (state.minimized) {
+        state.minimized = false;
+        safeSave(state);
+        applyUI();
+      }
+      try {
+        const sel = window.getSelection().toString().trim();
+        if (sel && sel.length > 2) {
+          const chunks = splitToChunks(sel, 220);
+          lastReadMode = 'selection';
+          speakChunksSequentially(chunks, fromIndex || 0);
+        } else alert(getUiString('select_text'));
+      } catch (e) { console.error('readSelection error', e); }
+    }
+
+    function nextChunk() {
+      if (!lastChunks || !lastChunks.length) { alert(getUiString('no_text')); return; }
+      const nextIdx = Math.min(lastChunks.length - 1, Math.max(0, globalCurrentIndex + 1));
+      speakChunksSequentially(lastChunks, nextIdx);
+    }
+    function prevChunk() {
+      if (!lastChunks || !lastChunks.length) { alert(getUiString('no_text')); return; }
+      const prevIdx = Math.max(0, globalCurrentIndex - 1);
+      speakChunksSequentially(lastChunks, prevIdx);
+    }
+
+    // -------------------------
+    // UI wiring
+    // -------------------------
+    floatingBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      console.debug('AW: floatingBtn click');
+      state.minimized = false;
+      state.hidden = false;
+      safeSave(state);
+      applyUI();
+    });
+
+    btnMinimize.addEventListener('click', (e) => {
+      e.stopPropagation();
+      console.debug('AW: btnMinimize click');
+      state.minimized = true;
+      safeSave(state);
+      applyUI();
+    });
+
+    btnIncrease.addEventListener('click', () => { state.fontSize = Math.min(28, (state.fontSize || defaults.fontSize) + 2); safeSave(state); applyUI(); });
+    btnDecrease.addEventListener('click', () => { state.fontSize = Math.max(10, (state.fontSize || defaults.fontSize) - 2); safeSave(state); applyUI(); });
+
+    function updateControlButtonsUI() {
+      try {
+        if (state.highContrast) {
+          btnContrast.classList.add('aw-toggle-active');
+          btnContrast.setAttribute('aria-pressed', 'true');
+          document.documentElement.classList.add('aw-high-contrast');
+          document.body.classList.add('aw-high-contrast');
+          root.classList.add('aw-high-contrast');
+          injectGlobalContrastStyles();
+        } else {
+          btnContrast.classList.remove('aw-toggle-active');
+          btnContrast.setAttribute('aria-pressed', 'false');
+          document.documentElement.classList.remove('aw-high-contrast');
+          document.body.classList.remove('aw-high-contrast');
+          root.classList.remove('aw-high-contrast');
+          removeGlobalContrastStyles();
+        }
+
+        if (state.disableAnimations) {
+          btnAnimations.classList.add('aw-toggle-active');
+          btnAnimations.setAttribute('aria-pressed', 'true');
+          document.documentElement.classList.add('aw-disable-animations');
+          document.body.classList.add('aw-disable-animations');
+          root.classList.add('aw-disable-animations');
+        } else {
+          btnAnimations.classList.remove('aw-toggle-active');
+          btnAnimations.setAttribute('aria-pressed', 'false');
+          document.documentElement.classList.remove('aw-disable-animations');
+          document.body.classList.remove('aw-disable-animations');
+          root.classList.remove('aw-disable-animations');
+        }
+      } catch (e) { console.warn(e); }
+    }
+
+    btnContrast.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.highContrast = !state.highContrast;
+      safeSave(state);
+      updateControlButtonsUI();
+      applyUI();
+    });
+
+    btnAnimations.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.disableAnimations = !state.disableAnimations;
+      safeSave(state);
+      updateControlButtonsUI();
+      applyUI();
+    });
+
+    selectLang.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === 'auto') state.lang = 'auto'; else state.lang = normalizeLangTag(val);
+      safeSave(state);
+      try { populateVoices(); } catch (err) {}
+    });
+
+    inputRate.addEventListener('input', (e) => { state.rate = parseFloat(e.target.value); spanRateVal.textContent = state.rate.toFixed(2); safeSave(state); });
+    inputPitch.addEventListener('input', (e) => { state.pitch = parseFloat(e.target.value); spanPitchVal.textContent = state.pitch.toFixed(2); safeSave(state); });
+
+    selectVoice.addEventListener('change', (e) => { const i = parseInt(e.target.value, 10); state.voiceIndex = isNaN(i) ? -1 : i; safeSave(state); });
+
+    btnPrev.addEventListener('click', (e) => { e.stopPropagation(); prevChunk(); });
+    btnNext.addEventListener('click', (e) => { e.stopPropagation(); nextChunk(); });
+
+    btnPlay.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (isPlaying && !isPaused) pauseResume();
+      else if (isPlaying && isPaused) pauseResume();
+      else {
+        if (lastChunks && lastChunks.length) speakChunksSequentially(lastChunks, globalCurrentIndex || 0);
+        else readPage(0);
+      }
+      updatePlayerUI();
+    });
+
+    btnStop.addEventListener('click', (e) => { e.stopPropagation(); stopReading(); });
+
+    btnRead.addEventListener('click', (e) => { e.stopPropagation(); readPage(0); });
+    btnReadSelection.addEventListener('click', (e) => { e.stopPropagation(); readSelection(0); });
+
+    // Eventos dos botões do Miniplayer
+    btnMiniPrev.addEventListener('click', (e) => { e.stopPropagation(); prevChunk(); });
+    btnMiniNext.addEventListener('click', (e) => { e.stopPropagation(); nextChunk(); });
+    btnMiniPlay.addEventListener('click', (e) => { e.stopPropagation(); pauseResume(); });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.altKey && !e.shiftKey && !e.ctrlKey && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        console.debug('AW: Alt+M pressed');
+        // FIX: Toggle minimized state and ensure hidden is false when opening
+        state.minimized = !state.minimized;
+        if (!state.minimized) {
+            state.hidden = false; // Important: Make sure widget is visible when opening with shortcut
+        }
+        safeSave(state);
+        applyUI();
+      }
+      try {
+        const rootEl = document.getElementById('accessibility-widget');
+        if (!rootEl || rootEl.classList.contains('aw-hidden') || rootEl.classList.contains('aw-minimized')) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); nextChunk(); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); prevChunk(); }
+        if (e.key === ' ') { e.preventDefault(); btnPlay.click(); }
+      } catch (e) {}
+    });
+
+    function getUiString(key) {
+      const lang = getEffectiveLang();
+      const strings = {
+        'pt-BR': {
+          'pause': 'Pausar',
+          'resume': 'Retomar',
+          'no_text': 'Nenhum texto encontrado para leitura.',
+          'error_start': 'Erro ao iniciar leitura. Veja console.',
+          'select_text': 'Selecione algum texto na página para ler.',
+          'tts_not_supported': 'Text-to-speech não suportado neste navegador.',
+          'play': 'Ler'
+        },
+        'en-US': {
+          'pause': 'Pause',
+          'resume': 'Resume',
+          'no_text': 'No readable text found.',
+          'error_start': 'Error starting reading. See console.',
+          'select_text': 'Select some text on the page to read.',
+          'tts_not_supported': 'Text-to-speech not supported in this browser.',
+          'play': 'Play'
+        }
+      };
+      return (strings[lang] && strings[lang][key]) || (strings['en-US'][key]) || key;
+    }
+
+    function applyComputedTheme() {
+      try {
+        const cs = getComputedStyle(document.documentElement);
+        const btnPrimary = cs.getPropertyValue('--btn-primary-bg').trim();
+        if (btnPrimary) {
+          document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => b.style.background = btnPrimary);
+          floatingBtn.style.background = btnPrimary;
+        }
+      } catch (e) {}
+    }
+
+    function applyUI() {
+      console.debug('AW: applyUI start', JSON.parse(JSON.stringify(state)));
+      try {
+        // 1. Visibilidade global
+        if (state.hidden) {
+          root.classList.add('aw-hidden');
+          return;
+        } else {
+          root.classList.remove('aw-hidden');
+        }
+
+        // 2. Lógica de Minimizar / Miniplayer
+        if (state.minimized) {
+          root.classList.add('aw-minimized');
+          // Se a leitura estiver ativa, mostre o miniplayer
+          if (isPlaying || isPaused) {
+            root.classList.add('aw-miniplayer-visible');
+          } else {
+            root.classList.remove('aw-miniplayer-visible');
+          }
+        } else {
+          // Se o painel estiver aberto, esconda o miniplayer e o botão flutuante
+          root.classList.remove('aw-minimized');
+          root.classList.remove('aw-miniplayer-visible');
+        }
+        
+        console.debug(`AW: applyUI end -> Minimized: ${state.minimized}, DOM Class: ${root.className}`);
+
+        // 3. Outros ajustes
+        document.documentElement.style.fontSize = (state.fontSize || defaults.fontSize) + 'px';
+        spanFontSize && (spanFontSize.textContent = (state.fontSize || defaults.fontSize) + 'px');
+
+        updateControlButtonsUI();
+        updatePlayerUI();
+      } catch (e) { console.warn('AccessibilityWidget.applyUI error', e); }
+    }
+
+    function attachRangeFillHandlers() {
+      const ranges = document.querySelectorAll('#accessibility-widget input[type="range"]');
+      ranges.forEach(inp => {
+        function updateFill() {
+          try {
+            const min = parseFloat(inp.min) || 0;
+            const max = parseFloat(inp.max) || 100;
+            const val = parseFloat(inp.value) || 0;
+            const pct = Math.round(((val - min) / (max - min)) * 100);
+            inp.style.setProperty('--aw-range-fill', pct + '%');
+          } catch (e) {}
+        }
+        updateFill();
+        inp.addEventListener('input', updateFill, {passive: true});
+      });
+      const rootEl = document.getElementById('accessibility-widget');
+      if (rootEl) rootEl.style.removeProperty('--aw-range-fill');
+    }
+    
+    // Initial setup
+    attachRangeFillHandlers();
+    setTimeout(() => { applyComputedTheme(); if (synth) populateVoices(); }, 700);
+    applyUI(); // First run
+
+    // Expose API + debug helpers
+    window.AccessibilityWidget = {
+      open: () => { state.hidden = false; state.minimized = false; safeSave(state); applyUI(); },
+      close: () => { state.hidden = true; safeSave(state); applyUI(); },
+      minimize: () => { state.minimized = true; safeSave(state); applyUI(); },
+      readPage: () => { readPage(0); },
+      readSelection: () => { readSelection(0); },
+      stop: stopReading,
+      pauseResume: pauseResume,
+      increaseFont: () => { btnIncrease.click(); },
+      decreaseFont: () => { btnDecrease.click(); },
+      setLang: (lang) => { state.lang = (lang || 'auto'); safeSave(state); try { populateVoices(); } catch(e){} },
+      next: nextChunk,
+      prev: prevChunk,
+      play: () => { btnPlay.click(); },
+      // debug helpers
+      testIndicator: (total, index) => {
+        if (state.minimized) { state.minimized = false; applyUI(); }
+        lastChunks = new Array(total).fill('teste');
+        currentUtterIdx = index >= 0 ? index : -1;
+        globalCurrentIndex = index >= 0 ? index : 0;
+        updatePlayerUI();
+      },
+      debugDump: () => {
+        console.log({
+          state: JSON.parse(JSON.stringify(state)),
+          lastChunks: lastChunks.length || 0,
+          isPlaying,
+          isPaused,
+          globalCurrentIndex,
+          currentUtterIdx
+        });
+      },
+      testSpeakElement: (selOrEl) => {
+        const el = typeof selOrEl === 'string' ? document.querySelector(selOrEl) : selOrEl;
+        const text = nodeToText(el);
+        if (text) {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = getEffectiveLang();
+          synth.speak(u);
+        }
+      }
+    };
+})();
