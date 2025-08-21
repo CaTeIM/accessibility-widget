@@ -379,8 +379,9 @@
 
 /* Classe que vamos usar no JS para mostrar o miniplayer */
 #accessibility-widget.aw-miniplayer-visible .aw-miniplayer { display: flex; }
+#accessibility-widget .aw-mini-btn:hover { background: var(--btn-primary-hover-bg, #5E81AC); }
 .aw-miniplayer-controls { display: flex; align-items: center; gap: 4px; }
-.aw-mini-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--btn-primary-bg, #4b7bec); color: #fff; border: none; display: flex; align-items: center; justify-content: center; padding: 0; }
+.aw-mini-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--btn-primary-bg, #4b7bec); color: #fff; border: none; display: flex; align-items: center; justify-content: center; padding: 0; transition: background-color 0.2s ease; }
 .aw-mini-btn svg { width: 18px; height: 18px; }
 .aw-miniplayer-chunk { font-size: 13px; color: var(--small-text,#d8e6f5); white-space: nowrap; }
 
