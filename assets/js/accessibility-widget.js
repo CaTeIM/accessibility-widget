@@ -1,10 +1,12 @@
-// Accessibility Widget - Final (fixed getReadableText) (2025-08-19)
+// Accessibility Widget - v1.7 (Visual Highlighter & Miniplayer)
 // Author: CaTeIM
 // Last update: 2025-08-21
-// Fixes:
-// - Robust minimize/restore logic, harmonizing state.hidden and state.minimized.
-// - Auto-opens panel when reading starts to ensure chunk indicator is visible.
-// - Added extensive debug logging for easier diagnostics.
+// Features & Fixes:
+// - NEW: Added a visual highlighter that follows the spoken text on the page.
+// - NEW: Implemented a mini-player when the panel is minimized during playback.
+// - REFACTOR: Overhauled text extraction engine for higher accuracy and precise highlighting.
+// - FIX: Major improvements to play/pause logic and auto-advancing between text chunks.
+// - UI: Replaced player controls with SVG icons & various style improvements.
 // Keep using: localStorage.removeItem('aw_settings_v1'); location.reload();
 
 (function () {
@@ -601,7 +603,7 @@ html.aw-high-contrast iframe {
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
           <div class="aw-small">Fonte: <span id="aw-font-size">${state.fontSize}px</span></div>
-          <div class="aw-small">Versão: 1.81</div>
+          <div class="aw-small">v1.7</div>
         </div>
       </div>
     `;
@@ -667,7 +669,7 @@ html.aw-high-contrast iframe {
       let elementToHighlight = elements[0];
       
       // Tenta encontrar um parente de bloco mais significativo para destacar
-      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, div, .info-display p, .btn');
+      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, .info-display p, .btn');
       if (goodParent) {
         elementToHighlight = goodParent;
       }
