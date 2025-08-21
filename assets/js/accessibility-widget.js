@@ -698,9 +698,6 @@ html.aw-high-contrast iframe {
     }
 
     function highlightSpokenText(text) {
-      // Limpa o marcador anterior
-      removeHighlight();
-
       const cleanChunk = text.replace(/\s+/g, ' ').trim().toLowerCase();
       if (cleanChunk.length < 5) return; // Evita destacar palavras muito pequenas
 
