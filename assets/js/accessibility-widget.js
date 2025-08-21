@@ -684,8 +684,6 @@ html.aw-high-contrast iframe {
     // -------------------------
     // Lógica do Marcador Visual
     // -------------------------
-    const highlighter = document.getElementById('aw-highlighter');
-
     function removeHighlight() {
       if (highlighter) {
         highlighter.classList.remove('aw-visible');
