@@ -698,8 +698,8 @@ html.aw-high-contrast iframe {
     }
 
     function highlightSpokenText(text) {
-      // Limpa o marcador anterior
-      removeHighlight();
+      // Limpa o marcador anterior
+      removeHighlight();
 
       const cleanChunk = text.replace(/\s+/g, ' ').trim().toLowerCase();
       if (cleanChunk.length < 5) return; // Evita destacar palavras muito pequenas
@@ -717,12 +717,12 @@ html.aw-high-contrast iframe {
 
       const walker = document.createTreeWalker(searchArea, NodeFilter.SHOW_TEXT, null, false);
       let node;
-      
-      // Itera por todos os nós de texto dentro da área de busca
+      
+      // Itera por todos os nós de texto dentro da área de busca
       while (node = walker.nextNode()) {
         const nodeText = (node.nodeValue || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-        // MUDANÇA PRINCIPAL: Verifica se a frase falada CONTÉM o texto do elemento na tela
+        // MUDANÇA PRINCIPAL: Verifica se a frase falada CONTÉM o texto do elemento na tela
         if (nodeText.length > 3 && cleanChunk.includes(nodeText)) {
           let elementToHighlight = node.parentElement;
 
@@ -740,7 +740,7 @@ html.aw-high-contrast iframe {
 
           if (elementToHighlight) {
             const rect = elementToHighlight.getBoundingClientRect();
-            
+            
             if (rect.width === 0 || rect.height === 0) continue;
 
             highlighter.style.top = `${rect.top + window.scrollY}px`;
@@ -749,16 +749,12 @@ html.aw-high-contrast iframe {
             highlighter.style.height = `${rect.height}px`;
 
             highlighter.classList.add('aw-visible');
-            
+            
             elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return; // Para a busca assim que encontrar o primeiro resultado
           }
         }
       }
-    }
-      
-      // Se não encontrar o texto, esconde o marcador
-      removeHighlight();
     }
   
     // -------------------------
