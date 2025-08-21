@@ -375,7 +375,7 @@
 #aw-floating-btn img { width: 35px; height: 35px; filter: invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%); }
 
 /* Estilos para o Miniplayer Flutuante */
-.aw-miniplayer { position: absolute; right: 68px; bottom: 0; height: 50px; display: none; align-items: center; gap: 8px; background: var(--card-bg, linear-gradient(145deg,#2f3542,#343a4a)); padding: 0 12px 0 8px; border-radius: 25px; box-shadow: 0 6px 18px rgba(0,0,0,.25); color: var(--panel-text, #e6eef8); animation: fadeInMiniplayer 0.3s ease; }
+.aw-miniplayer { position: absolute; right: 68px; bottom: 0; height: 50px; display: none; align-items: center; gap: 8px; background: var(--btn-primary-bg,#4b7bec); padding: 0 12px 0 8px; border-radius: 25px; box-shadow: 0 6px 18px rgba(0,0,0,.25); color: var(--panel-text, #e6eef8); animation: fadeInMiniplayer 0.3s ease; }
 
 /* Classe que vamos usar no JS para mostrar o miniplayer */
 #accessibility-widget.aw-miniplayer-visible .aw-miniplayer { display: flex; }
