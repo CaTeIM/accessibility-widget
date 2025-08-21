@@ -138,42 +138,47 @@
       t = t.replace(/\s{2,}/g, ' ').trim();
       return t;
     }
-    function splitToChunks(text, maxLen = 220) {
-      text = normalizeTextForReading(text);
-      if (!text) return [];
-      const sentenceRegex = /[^.!?…]+[.!?…]?/g;
-      const sentences = text.match(sentenceRegex) || [text];
-      const chunks = [];
-      for (let s of sentences) {
-        s = s.trim();
-        if (!s) continue;
-        if (s.length <= maxLen) chunks.push(s);
-        else {
-          const parts = s.split(/[,;:]+/g);
-          let buffer = '';
-          parts.forEach((p, idx) => {
-            const piece = p.trim() + (idx < parts.length - 1 ? ',' : '');
-            if ((buffer + ' ' + piece).trim().length <= maxLen) buffer = (buffer + ' ' + piece).trim();
-            else {
-              if (buffer) chunks.push(buffer);
-              if (piece.length > maxLen) {
-                const words = piece.split(' ');
-                let sub = '';
-                words.forEach(w => {
-                  if ((sub + ' ' + w).trim().length <= maxLen) sub = (sub + ' ' + w).trim();
-                  else { if (sub) chunks.push(sub); sub = w; }
-                });
-                if (sub) chunks.push(sub);
-                buffer = '';
-              } else buffer = piece;
+
+    // -------------------------
+    // Domain protection & chunking
+    // -------------------------
+    function splitToChunks(mappedText, maxLen = 220) {
+      if (!mappedText || !mappedText.length) return [];
+      
+      const chunks = [];
+      let currentChunk = { text: '', elements: [] };
+
+      mappedText.forEach(item => {
+        // O ponto final que adicionamos para pausas não precisa ser lido
+        if (item.text === '.') {
+            if (currentChunk.text) {
+                chunks.push(currentChunk);
+                currentChunk = { text: '', elements: [] };
             }
-          });
-          if (buffer) chunks.push(buffer);
+            return;
         }
-      }
-      console.debug('AW: Generated chunks:', chunks.length);
-      return chunks;
-    }
+
+        const processedText = normalizeTextForReading(item.text);
+        
+        if ((currentChunk.text + ' ' + processedText).trim().length > maxLen && currentChunk.text) {
+          chunks.push(currentChunk);
+          currentChunk = { text: processedText, elements: [item.element] };
+        } else {
+          currentChunk.text = (currentChunk.text + ' ' + processedText).trim();
+          if (!currentChunk.elements.includes(item.element)) {
+            currentChunk.elements.push(item.element);
+          }
+        }
+      });
+
+      if (currentChunk.text) {
+        chunks.push(currentChunk);
+      }
+      
+      console.debug('AW: Generated mapped chunks:', chunks.length);
+      return chunks;
+    }
+
     function pauseForChunkEnd(text) {
       if (!text) return 180;
       const last = text.trim().slice(-1);
@@ -232,137 +237,93 @@
     // Node -> text extractor (with interactive prefixes)
     // -------------------------
     function nodeToText(node) {
-      try {
-        const clone = node.cloneNode(true);
+      const mappedText = [];
+      const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
 
-        const interactive = clone.querySelectorAll('button, a, input, textarea, select, label, [role]');
-        interactive.forEach(el => {
-          let label = '';
-          const tag = (el.tagName || '').toLowerCase();
-          try {
-            label = el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || el.getAttribute('value')) || '';
-            if (!label) {
-              const ariaLabBy = el.getAttribute && el.getAttribute('aria-labelledby');
-              if (ariaLabBy) {
-                const ref = clone.querySelector('#' + ariaLabBy);
-                if (ref) label = (ref.innerText || ref.textContent || '').trim();
-              }
-            }
-            if (!label) label = (el.innerText || el.textContent || '').trim();
-            if (typeof label === 'string') label = label.trim();
-            if (!label) {
-              const type = (el.type || '').toLowerCase();
-              if (tag === 'input' && type) label = type;
-              else if (tag === 'a') label = (el.getAttribute && el.getAttribute('href')) ? el.getAttribute('href') : '';
-            }
-          } catch (e) { label = ''; }
+      // Função recursiva para percorrer a árvore DOM
+      function walk(currentNode) {
+        if (!currentNode || currentNode.nodeType === Node.COMMENT_NODE) {
+          return;
+        }
 
-          const prefix = getInteractivePrefix(el, tag, (typeof getEffectiveLang === 'function' ? getEffectiveLang() : 'pt-BR'));
-          let spoken = (label || '').toString().trim();
+        // Se for um elemento interativo, trata e não continua para os filhos
+        const tag = (currentNode.tagName || '').toUpperCase();
+        const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL)$/;
+        if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
+          let label = '';
+          try {
+            label = currentNode.getAttribute('aria-label') || currentNode.getAttribute('title') || currentNode.getAttribute('placeholder') || currentNode.value || (currentNode.innerText || currentNode.textContent).trim();
+          } catch (e) {}
+          const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
+          let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
+          if (!/[.!?…]$/.test(spoken)) spoken += '.';
+          mappedText.push({ text: spoken, element: currentNode });
+          return; // Para aqui para não ler o texto dentro do botão duas vezes
+        }
 
-          if (!spoken) {
-            const isPt = (typeof getEffectiveLang === 'function' ? getEffectiveLang().toLowerCase().startsWith('pt') : true);
-            spoken = isPt ? 'sem rótulo' : 'unlabeled';
-          }
+        // Se for um nó de texto, adiciona ao mapa
+        if (currentNode.nodeType === Node.TEXT_NODE) {
+          const text = (currentNode.nodeValue || '').trim();
+          if (text) {
+            mappedText.push({ text: text, element: currentNode.parentElement });
+          }
+        }
 
-          let replacementText = '';
-          if (prefix) replacementText = (prefix + spoken).trim();
-          else replacementText = spoken.trim();
+        // Continua a caminhada pelos filhos
+        for (let i = 0; i < currentNode.childNodes.length; i++) {
+          walk(currentNode.childNodes[i]);
+        }
 
-          if (replacementText) {
-            const last = replacementText.slice(-1);
-            if (!/[.!?…:;]$/.test(last)) replacementText = replacementText + '.';
-          } else {
-            replacementText = '';
-          }
+        // Adiciona um ponto final se o elemento for um bloco, para criar pausas
+        if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
+          if (mappedText.length > 0) {
+            const lastEntry = mappedText[mappedText.length - 1];
+            if (lastEntry.text !== '.') {
+              mappedText.push({ text: '.', element: currentNode });
+            }
+          }
+        }
+      }
 
-          console.debug(`AW: nodeToText replacing <${tag}> with: "${replacementText}"`);
-          const replacement = document.createElement('span');
-          replacement.textContent = replacementText + ' ';
-          if (el.parentNode) el.parentNode.replaceChild(replacement, el);
-        });
-
-        // Header heuristics
-        const headerSelectors = 'header, nav, .navbar-custom, .site-header, #header';
-        const headers = clone.querySelectorAll(headerSelectors);
-        headers.forEach(h => {
-          try {
-            const txt = (h.innerText || h.textContent || '').trim();
-            if (!txt) return;
-            if (!/^\s*\.\s*/.test(h.textContent || '')) {
-              const prefix = document.createTextNode('. ');
-              h.parentNode && h.parentNode.insertBefore(prefix, h);
-            }
-            if (!/[.!?…]\s*$/.test(h.textContent || '')) {
-              const sep = document.createTextNode('. ');
-              if (h.nextSibling) h.parentNode.insertBefore(sep, h.nextSibling);
-              else h.appendChild(sep);
-            }
-          } catch (e) {}
-        });
-
-        // Block separators
-        const blockSelectors = 'h1,h2,h3,h4,h5,h6,p,li,label,section,div.profile-section,div.card-custom,dt,dd,tbody,tr,th,td,header,footer,div';
-        const blocks = clone.querySelectorAll(blockSelectors);
-        blocks.forEach(el => {
-          try {
-            if (el.dataset && el.dataset.awSep) return;
-            const txt = (el.innerText || el.textContent || '').trim();
-            if (!txt) return;
-            const sepNode = document.createTextNode('. ');
-            if (el.nextSibling) el.parentNode.insertBefore(sepNode, el.nextSibling);
-            else el.appendChild(sepNode);
-            if (el.dataset) el.dataset.awSep = '1';
-          } catch (e) {}
-        });
-
-        // Remove noisy elements
-        const remove = clone.querySelectorAll('script, style, noscript, iframe, svg, img, video');
-        remove.forEach(r => r.remove());
-
-        let text = clone.innerText || clone.textContent || '';
-        text = spokenEmail(text, getEffectiveLang());
-        text = text.replace(/\s{2,}/g, ' ').replace(/\s*\.\s*\.\s*/g, '. ').trim();
-        if (text && !/[.!?…]$/.test(text.slice(-1))) text = text + '.';
-        return text;
-      } catch (e) {
-        console.warn('AccessibilityWidget.nodeToText error', e);
-        try { return (node.innerText || node.textContent || '').replace(/\s{2,}/g, ' ').trim(); } catch (ee) { return ''; }
-      }
-    }
+      const clone = node.cloneNode(true);
+      // Remove elementos que não queremos ler
+      clone.querySelectorAll('script, style, noscript, iframe, svg, img, video').forEach(r => r.remove());
+      walk(clone);
+      return mappedText;
+    }
 
     // -------------------------
-    // getReadableText (RESTORED) - aggregates header + main or body
+    // getReadableText - aggregates header + main or body
     // -------------------------
     function getReadableText() {
-      try {
-        const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
-        let headerText = '';
-        for (let sel of headerCandidates) {
-          const h = document.querySelector(sel);
-          if (h) {
-            const t = nodeToText(h);
-            if (t && t.length > 5) { headerText = t; break; }
-          }
-        }
-        const selectors = ['main', 'article', '#content', '.content', '#profile-main-content'];
-        for (let s of selectors) {
-          const el = document.querySelector(s);
-          if (el) {
-            const t = nodeToText(el);
-            if (t && t.length > 20) {
-                const fullText = (headerText ? (headerText + ' ' + t) : t).trim();
-                console.debug('AW: Readable text length:', fullText.length);
-                return fullText;
-            }
-          }
-        }
-        const bodyText = nodeToText(document.body) || '';
-        const fullText = (headerText ? (headerText + ' ' + bodyText) : bodyText).trim();
-        console.debug('AW: Readable text length (fallback to body):', fullText.length);
-        return fullText;
-      } catch (e) { console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || ''; }
-    }
+      try {
+        const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
+        let headerMap = [];
+        for (let sel of headerCandidates) {
+          const h = document.querySelector(sel);
+          if (h) {
+            const map = nodeToText(h);
+            if (map.length > 2) {
+                headerMap = map;
+                break;
+            }
+          }
+        }
+
+        const selectors = ['main', 'article', '#content', '.content', '#profile-main-content'];
+        for (let s of selectors) {
+          const el = document.querySelector(s);
+          if (el) {
+            const mainMap = nodeToText(el);
+            if (mainMap.length > 5) {
+              return headerMap.concat(mainMap);
+            }
+          }
+        }
+        // Fallback para o body
+        return nodeToText(document.body) || [];
+      } catch (e) { console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || []; }
+    }
 
     // -------------------------
     // UI & CSS (include indicator styles)
@@ -697,61 +658,35 @@ html.aw-high-contrast iframe {
       }
     }
 
-    function highlightSpokenText(text) {
-      const cleanChunk = text.replace(/\s+/g, ' ').trim().toLowerCase();
-      if (cleanChunk.length < 5) return; // Evita destacar palavras muito pequenas
-
-      const searchAreas = ['main', 'article', '#content', '.content', '#profile-main-content', 'body'];
-      let searchArea = null;
-      for (const s of searchAreas) {
-        const el = document.querySelector(s);
-        if (el) {
-          searchArea = el;
-          break;
-        }
+    function highlightSpokenText(elements) {
+      if (!elements || !elements.length || lastReadMode === 'selection') {
+        removeHighlight();
+        return;
       }
-      if (!searchArea) return;
 
-      const walker = document.createTreeWalker(searchArea, NodeFilter.SHOW_TEXT, null, false);
-      let node;
+      let elementToHighlight = elements[0];
       
-      // Itera por todos os nós de texto dentro da área de busca
-      while (node = walker.nextNode()) {
-        const nodeText = (node.nodeValue || '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-        // MUDANÇA PRINCIPAL: Verifica se a frase falada CONTÉM o texto do elemento na tela
-        if (nodeText.length > 3 && cleanChunk.includes(nodeText)) {
-          let elementToHighlight = node.parentElement;
-
-          // Sobe na árvore DOM para encontrar um bom elemento de bloco para destacar
-          let attempts = 0;
-          while (elementToHighlight && attempts < 5) {
-            if (elementToHighlight === document.body) break;
-            const display = window.getComputedStyle(elementToHighlight).display;
-            if (display === 'block' || display === 'list-item' || elementToHighlight.tagName.match(/^H[1-6]$/)) {
-              break;
-            }
-            elementToHighlight = elementToHighlight.parentElement;
-            attempts++;
-          }
-
-          if (elementToHighlight) {
-            const rect = elementToHighlight.getBoundingClientRect();
-            
-            if (rect.width === 0 || rect.height === 0) continue;
-
-            highlighter.style.top = `${rect.top + window.scrollY}px`;
-            highlighter.style.left = `${rect.left + window.scrollX}px`;
-            highlighter.style.width = `${rect.width}px`;
-            highlighter.style.height = `${rect.height}px`;
-
-            highlighter.classList.add('aw-visible');
-            
-            elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return; // Para a busca assim que encontrar o primeiro resultado
-          }
-        }
+      // Tenta encontrar um parente de bloco mais significativo para destacar
+      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, div, .info-display p, .btn');
+      if (goodParent) {
+        elementToHighlight = goodParent;
       }
+
+      const rect = elementToHighlight.getBoundingClientRect();
+      
+      if (rect.width === 0 || rect.height === 0) {
+        removeHighlight();
+        return;
+      }
+
+      highlighter.style.top = `${rect.top + window.scrollY}px`;
+      highlighter.style.left = `${rect.left + window.scrollX}px`;
+      highlighter.style.width = `${rect.width}px`;
+      highlighter.style.height = `${rect.height}px`;
+
+      highlighter.classList.add('aw-visible');
+      
+      elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   
     // -------------------------
@@ -853,70 +788,73 @@ html.aw-high-contrast iframe {
     }
 
     function speakChunksSequentially(chunks, startIndex = 0) {
-      if (!synth) { alert(getUiString('tts_not_supported')); return; }
-      stopReading();
-      if (!Array.isArray(chunks) || !chunks.length) {
-        lastChunks = [];
-        updatePlayerUI();
-        return;
-      }
+      if (!synth) { alert(getUiString('tts_not_supported')); return; }
+      stopReading();
+      if (!Array.isArray(chunks) || !chunks.length) {
+        lastChunks = [];
+        updatePlayerUI();
+        return;
+      }
 
-      console.debug(`AW: speakChunksSequentially starting with ${chunks.length} chunks from index ${startIndex}`);
-      lastChunks = chunks.slice(0);
-      globalCurrentIndex = Math.max(0, Math.min(startIndex, lastChunks.length - 1));
-      utterQueue = []; isPaused = false; pendingNextIndex = null; isPlaying = true; currentUtterIdx = -1;
+      console.debug(`AW: speakChunksSequentially starting with ${chunks.length} chunks from index ${startIndex}`);
+      lastChunks = chunks.slice(0);
+      globalCurrentIndex = Math.max(0, Math.min(startIndex, lastChunks.length - 1));
+      utterQueue = []; isPaused = false; pendingNextIndex = null; isPlaying = true; currentUtterIdx = -1;
 
-      for (let i = 0; i < lastChunks.length; i++) {
-        const u = new SpeechSynthesisUtterance(lastChunks[i]);
-        u.rate = state.rate || defaults.rate;
-        u.pitch = state.pitch || defaults.pitch;
-        try {
-          const vi = parseInt(selectVoice.value || -1, 10);
-          if (!isNaN(vi) && vi >= 0 && voices[vi]) { u.voice = voices[vi]; u.lang = voices[vi].lang || getEffectiveLang(); }
-          else u.lang = getEffectiveLang();
-        } catch (e) { u.lang = getEffectiveLang(); }
-        u._idx = i;
+      for (let i = 0; i < lastChunks.length; i++) {
+        const chunkObject = lastChunks[i];
+        const u = new SpeechSynthesisUtterance(chunkObject.text); // Usa o texto do objeto
+        u.rate = state.rate || defaults.rate;
+        u.pitch = state.pitch || defaults.pitch;
+        u._elements = chunkObject.elements; // Guarda a referência dos elementos
 
-        u.onstart = function () {
+        try {
+          const vi = parseInt(selectVoice.value || -1, 10);
+          if (!isNaN(vi) && vi >= 0 && voices[vi]) { u.voice = voices[vi]; u.lang = voices[vi].lang || getEffectiveLang(); }
+          else u.lang = getEffectiveLang();
+        } catch (e) { u.lang = getEffectiveLang(); }
+        u._idx = i;
+
+        u.onstart = function () {
           console.debug('AW: utter start', u._idx);
           currentUtterIdx = u._idx;
-          highlightSpokenText(u.text);
+          highlightSpokenText(u._elements); // Passa os ELEMENTOS, não o texto
           updatePlayerUI();
         };
 
-        u.onend = function () {
+        u.onend = function () {
           console.debug('AW: utter end', u._idx);
           currentUtterIdx = -1;
-          // Se não estivermos pausando, avance para o próximo trecho.
           if (!isPaused) {
             globalCurrentIndex = u._idx + 1;
             const delay = pauseForChunkEnd(u.text) || 200;
             setTimeout(() => {
-              if (isPaused) return; // Checagem extra de segurança
+              if (isPaused) return;
               const nextIdx = u._idx + 1;
               if (nextIdx < utterQueue.length) {
                 try { synth.speak(utterQueue[nextIdx]); } catch (e) { console.warn(e); }
               } else {
                 isPlaying = false;
+                removeHighlight(); // Limpa o último marcador no final da leitura
                 updatePlayerUI();
               }
             }, delay);
           }
         };
-        u.onerror = function (e) { console.warn('utterance error', e); };
+        u.onerror = function (e) { console.warn('utterance error', e); };
 
-        utterQueue.push(u);
-      }
+        utterQueue.push(u);
+      }
 
-      updatePlayerUI(); // IMPORTANT: Update UI immediately to show indicator
+      updatePlayerUI();
 
-      try {
-        if (startIndex < utterQueue.length) {
-          synth.speak(utterQueue[startIndex]);
-          globalCurrentIndex = startIndex;
-        }
-      } catch (e) { console.error(e); }
-    }
+      try {
+        if (startIndex < utterQueue.length) {
+          synth.speak(utterQueue[startIndex]);
+          globalCurrentIndex = startIndex;
+        }
+      } catch (e) { console.error(e); }
+    }
 
     function stopReading() {
       removeHighlight();
@@ -962,37 +900,41 @@ html.aw-high-contrast iframe {
     }
 
     function readPage(fromIndex = 0) {
-      // FIX: Ensure panel is open to show indicator
-      if (state.minimized) {
-        state.minimized = false;
-        safeSave(state);
-        applyUI();
-      }
-      try {
-        const text = getReadableText();
-        if (!text || text.length < 2) { alert(getUiString('no_text')); return; }
-        const chunks = splitToChunks(text, 220);
-        lastReadMode = 'page';
-        speakChunksSequentially(chunks, fromIndex || 0);
-      } catch (e) { console.error('readPage error', e); alert(getUiString('error_start')); }
-    }
+      // FIX: Ensure panel is open to show indicator
+      if (state.minimized) {
+        state.minimized = false;
+        safeSave(state);
+        applyUI();
+      }
+      try {
+        // Agora pega o mapa de texto em vez de texto puro
+        const mappedText = getReadableText(); 
+        if (!mappedText || mappedText.length < 1) { alert(getUiString('no_text')); return; }
+        // Passa o mapa para a função de quebrar em pedaços
+        const chunks = splitToChunks(mappedText, 220);
+        lastReadMode = 'page';
+        speakChunksSequentially(chunks, fromIndex || 0);
+      } catch (e) { console.error('readPage error', e); alert(getUiString('error_start')); }
+    }
 
-    function readSelection(fromIndex = 0) {
-      // FIX: Ensure panel is open to show indicator
-      if (state.minimized) {
-        state.minimized = false;
-        safeSave(state);
-        applyUI();
-      }
-      try {
-        const sel = window.getSelection().toString().trim();
-        if (sel && sel.length > 2) {
-          const chunks = splitToChunks(sel, 220);
-          lastReadMode = 'selection';
-          speakChunksSequentially(chunks, fromIndex || 0);
-        } else alert(getUiString('select_text'));
-      } catch (e) { console.error('readSelection error', e); }
-    }
+    function readSelection(fromIndex = 0) {
+      // FIX: Ensure panel is open to show indicator
+      if (state.minimized) {
+        state.minimized = false;
+        safeSave(state);
+        applyUI();
+      }
+      try {
+        const selText = window.getSelection().toString().trim();
+        if (selText && selText.length > 2) {
+          // Cria um "mapa falso" para o texto selecionado. O marcador não funcionará, mas a leitura sim.
+          const mappedText = [{ text: selText, element: document.body }];
+          const chunks = splitToChunks(mappedText, 220);
+          lastReadMode = 'selection';
+          speakChunksSequentially(chunks, fromIndex || 0);
+        } else alert(getUiString('select_text'));
+      } catch (e) { console.error('readSelection error', e); }
+    }
 
     function nextChunk() {
       if (!lastChunks || !lastChunks.length) { alert(getUiString('no_text')); return; }
