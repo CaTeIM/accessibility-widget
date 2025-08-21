@@ -371,6 +371,10 @@
 /* Helper class for visibility toggling */
 .aw-hidden { display: none !important; }
 
+/* Estilos para o Marcador de Leitura Visual */
+#aw-highlighter { position: absolute; z-index: 2147483640; background-color: rgba(143, 188, 187, 0.25); border: 2px solid var(--primary-accent, #8FBCBB); border-radius: 8px; box-shadow: 0 0 15px rgba(143, 188, 187, 0.5); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
+#aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
+
 #aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: var(--btn-primary-bg,#4b7bec); }
 #aw-floating-btn img { width: 35px; height: 35px; filter: invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%); }
 
@@ -636,7 +640,7 @@ html.aw-high-contrast iframe {
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
           <div class="aw-small">Fonte: <span id="aw-font-size">${state.fontSize}px</span></div>
-          <div class="aw-small">Versão: 1.61</div>
+          <div class="aw-small">Versão: 1.81</div>
         </div>
       </div>
     `;
@@ -663,6 +667,7 @@ html.aw-high-contrast iframe {
     const btnRead = document.getElementById('aw-read');
     const btnReadSelection = document.getElementById('aw-read-selection');
     const spanFontSize = document.getElementById('aw-font-size');
+    const highlighter = document.createElement('div'); highlighter.id = 'aw-highlighter'; document.body.appendChild(highlighter);
 
     // Referências do Miniplayer
     const miniPlayer = document.getElementById('aw-miniplayer');
@@ -676,6 +681,88 @@ html.aw-high-contrast iframe {
     const chunkText = document.getElementById('aw-chunk-text');
     const chunkFill = document.getElementById('aw-chunk-fill');
 
+    // -------------------------
+    // Lógica do Marcador Visual
+    // -------------------------
+    const highlighter = document.getElementById('aw-highlighter');
+
+    function removeHighlight() {
+      if (highlighter) {
+        highlighter.classList.remove('aw-visible');
+        // Reseta a posição após a transição para não ficar "flutuando" invisível
+        setTimeout(() => {
+          highlighter.style.width = '0px';
+          highlighter.style.height = '0px';
+          highlighter.style.top = '0px';
+          highlighter.style.left = '0px';
+        }, 300); // Deve ser um pouco mais que o tempo da transição no CSS
+      }
+    }
+
+    function highlightSpokenText(text) {
+      const cleanChunk = text.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (cleanChunk.length < 4) { // Evita destacar palavras muito pequenas
+        removeHighlight();
+        return;
+      }
+
+      const searchAreas = ['main', 'article', '#content', '.content', '#profile-main-content', 'body'];
+      let searchArea = null;
+      for (const s of searchAreas) {
+        const el = document.querySelector(s);
+        if (el) {
+          searchArea = el;
+          break;
+        }
+      }
+      if (!searchArea) return;
+
+      // Usa TreeWalker para percorrer apenas os nós de texto, que é mais eficiente
+      const walker = document.createTreeWalker(searchArea, NodeFilter.SHOW_TEXT, null, false);
+      let node;
+      while (node = walker.nextNode()) {
+        const nodeText = (node.nodeValue || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+        if (nodeText.includes(cleanChunk)) {
+          let elementToHighlight = node.parentElement;
+
+          // Sobe na árvore DOM para encontrar um bom elemento de bloco para destacar
+          let attempts = 0;
+          while (elementToHighlight && attempts < 5) {
+            if (elementToHighlight === document.body) break;
+            const display = window.getComputedStyle(elementToHighlight).display;
+            if (display === 'block' || display === 'list-item' || elementToHighlight.tagName.match(/^H[1-6]$/)) {
+              break; // Encontrou um bom candidato
+            }
+            elementToHighlight = elementToHighlight.parentElement;
+            attempts++;
+          }
+
+          if (elementToHighlight) {
+            const rect = elementToHighlight.getBoundingClientRect();
+            
+            // Ignora elementos que não estão visíveis na tela
+            if (rect.width === 0 || rect.height === 0) continue;
+
+            // Calcula a posição correta, incluindo o scroll da página
+            highlighter.style.top = `${rect.top + window.scrollY}px`;
+            highlighter.style.left = `${rect.left + window.scrollX}px`;
+            highlighter.style.width = `${rect.width}px`;
+            highlighter.style.height = `${rect.height}px`;
+
+            highlighter.classList.add('aw-visible');
+            
+            // Rola a tela para que o elemento fique centralizado
+            elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return; // Para a busca assim que encontrar o primeiro resultado
+          }
+        }
+      }
+      
+      // Se não encontrar o texto, esconde o marcador
+      removeHighlight();
+    }
+  
     // -------------------------
     // Speech synthesis setup
     // -------------------------
@@ -800,10 +887,11 @@ html.aw-high-contrast iframe {
         u._idx = i;
 
         u.onstart = function () {
-          console.debug('AW: utter start', u._idx);
-          currentUtterIdx = u._idx;
-          updatePlayerUI();
-        };
+          console.debug('AW: utter start', u._idx);
+          currentUtterIdx = u._idx;
+          highlightSpokenText(u.text);
+          updatePlayerUI();
+        };
 
         u.onend = function () {
           console.debug('AW: utter end', u._idx);
@@ -840,6 +928,7 @@ html.aw-high-contrast iframe {
     }
 
     function stopReading() {
+      removeHighlight();
       try { if (synth) synth.cancel(); } catch (e) {}
       utterQueue = [];
       isPaused = false;
