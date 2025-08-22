@@ -531,7 +531,7 @@ html.aw-high-contrast iframe {
           </button>
         </div>
       </div>
-      <div class="aw-panel" id="aw-panel" role="dialog" aria-modal="true" aria-labelledby="aw-title-text" style="display: none;">
+      <div class="aw-panel" id="aw-panel" role="dialog" aria-modal="true" aria-labelledby="aw-title-text" aria-hidden="true">
         <div class="aw-title">
           <div style="display:flex;align-items:center;gap:8px;">
             <strong id="aw-title-text">Acessibilidade</strong>
@@ -951,7 +951,7 @@ html.aw-high-contrast iframe {
       state.hidden = false;
       safeSave(state);
       applyUI();
-      setTimeout(() => document.getElementById('aw-minimize-btn').focus(), 100);
+      setTimeout(() => btnMinimize.focus(), 100);
     });
 
     btnMinimize.addEventListener('click', (e) => {
@@ -1116,8 +1116,13 @@ html.aw-high-contrast iframe {
           root.classList.remove('aw-hidden');
         }
 
+        const isMinimized = state.minimized;
+
+        floatingBtn.setAttribute('aria-expanded', !isMinimized);
+        panel.setAttribute('aria-hidden', isMinimized);
+
         // 2. Lógica de Minimizar / Miniplayer
-        if (state.minimized) {
+        if (isMinimized) {
           root.classList.add('aw-minimized');
           // Se a leitura estiver ativa, mostre o miniplayer
           if (isPlaying || isPaused) {
