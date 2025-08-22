@@ -729,6 +729,7 @@ html.aw-high-contrast iframe {
     let globalCurrentIndex = 0;
     let isPaused = false;
     let pendingNextIndex = null;
+    let navigatedWhilePaused = false;
     let lastChunks = [];
     let isPlaying = false;
     let lastReadMode = null;
@@ -872,40 +873,34 @@ html.aw-high-contrast iframe {
       if (!synth) return;
       try {
         if (isPaused) {
-          // LÓGICA DE RETOMAR
           isPaused = false;
           isPlaying = true;
           updatePlayerUI();
-          // Se a fala foi interrompida e temos um próximo trecho pendente, comece por ele.
           if (pendingNextIndex !== null && pendingNextIndex < lastChunks.length) {
-            speakChunksSequentially(lastChunks, pendingNextIndex);
+            const resumeIndex = navigatedWhilePaused ? pendingNextIndex + 1 : pendingNextIndex;
+            speakChunksSequentially(lastChunks, resumeIndex);
           } else {
-            // Senão, apenas continue a fala que já estava pausada no navegador.
             synth.resume();
           }
         } else if (isPlaying) {
-          // LÓGICA DE PAUSAR
           isPaused = true;
-          // Guarda o índice do trecho atual para saber de onde voltar.
+          navigatedWhilePaused = false;
           pendingNextIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
-          synth.pause(); // Usa o pause nativo que é mais simples
+          synth.pause();
           updatePlayerUI();
         }
       } catch (err) { console.warn('pauseResume error', err); }
     }
 
     function readPage(fromIndex = 0) {
-      // FIX: Ensure panel is open to show indicator
       if (state.minimized) {
         state.minimized = false;
         safeSave(state);
         applyUI();
       }
       try {
-        // Agora pega o mapa de texto em vez de texto puro
         const mappedText = getReadableText();
         if (!mappedText || mappedText.length < 1) { alert(getUiString('no_text')); return; }
-        // Passa o mapa para a função de quebrar em pedaços
         const chunks = splitToChunks(mappedText, 220);
         lastReadMode = 'page';
         speakChunksSequentially(chunks, fromIndex || 0);
@@ -913,7 +908,6 @@ html.aw-high-contrast iframe {
     }
 
     function readSelection(fromIndex = 0) {
-      // FIX: Ensure panel is open to show indicator
       if (state.minimized) {
         state.minimized = false;
         safeSave(state);
@@ -933,6 +927,9 @@ html.aw-high-contrast iframe {
     function speakChunkAtIndex(index) {
       if (!synth || !utterQueue.length) return;
       try {
+        if (isPaused) {
+          navigatedWhilePaused = true;
+        }
         globalCurrentIndex = Math.max(0, Math.min(index, utterQueue.length - 1));
         pendingNextIndex = globalCurrentIndex;
         synth.cancel();
