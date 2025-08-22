@@ -1,6 +1,6 @@
 // Accessibility Widget - v1.7 (Visual Highlighter & Miniplayer)
 // Author: CaTeIM
-// Last update: 2025-08-21
+// Last update: 2025-08-22
 // Features & Fixes:
 // - NEW: Added a visual highlighter that follows the spoken text on the page.
 // - NEW: Implemented a mini-player when the panel is minimized during playback.
@@ -177,7 +177,6 @@
         chunks.push(currentChunk);
       }
 
-      console.debug('AW: Generated mapped chunks:', chunks.length);
       return chunks;
     }
 
@@ -795,7 +794,6 @@ html.aw-high-contrast iframe {
         return;
       }
 
-      console.debug(`AW: speakChunksSequentially starting with ${chunks.length} chunks from index ${startIndex}`);
       lastChunks = chunks.slice(0);
       globalCurrentIndex = Math.max(0, Math.min(startIndex, lastChunks.length - 1));
       utterQueue = []; isPaused = false; pendingNextIndex = null; isPlaying = true; currentUtterIdx = -1;
@@ -815,14 +813,12 @@ html.aw-high-contrast iframe {
         u._idx = i;
 
         u.onstart = function () {
-          console.debug('AW: utter start', u._idx);
           currentUtterIdx = u._idx;
           highlightSpokenText(u._elements); // Passa os ELEMENTOS, não o texto
           updatePlayerUI();
         };
 
         u.onend = function () {
-          console.debug('AW: utter end', u._idx);
           currentUtterIdx = -1;
           if (!isPaused) {
             globalCurrentIndex = u._idx + 1;
@@ -951,7 +947,6 @@ html.aw-high-contrast iframe {
     // -------------------------
     floatingBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      console.debug('AW: floatingBtn click');
       state.minimized = false;
       state.hidden = false;
       safeSave(state);
@@ -960,7 +955,6 @@ html.aw-high-contrast iframe {
 
     btnMinimize.addEventListener('click', (e) => {
       e.stopPropagation();
-      console.debug('AW: btnMinimize click');
       state.minimized = true;
       safeSave(state);
       applyUI();
@@ -1058,8 +1052,6 @@ html.aw-high-contrast iframe {
     document.addEventListener('keydown', function (e) {
       if (e.altKey && !e.shiftKey && !e.ctrlKey && (e.key === 'm' || e.key === 'M')) {
         e.preventDefault();
-        console.debug('AW: Alt+M pressed');
-        // FIX: Toggle minimized state and ensure hidden is false when opening
         state.minimized = !state.minimized;
         if (!state.minimized) {
             state.hidden = false; // Important: Make sure widget is visible when opening with shortcut
@@ -1113,7 +1105,6 @@ html.aw-high-contrast iframe {
     }
 
     function applyUI() {
-      console.debug('AW: applyUI start', JSON.parse(JSON.stringify(state)));
       try {
         // 1. Visibilidade global
         if (state.hidden) {
@@ -1138,9 +1129,6 @@ html.aw-high-contrast iframe {
           root.classList.remove('aw-miniplayer-visible');
         }
 
-        console.debug(`AW: applyUI end -> Minimized: ${state.minimized}, DOM Class: ${root.className}`);
-
-        // 3. Outros ajustes
         document.documentElement.style.fontSize = (state.fontSize || defaults.fontSize) + 'px';
         spanFontSize && (spanFontSize.textContent = (state.fontSize || defaults.fontSize) + 'px');
 
@@ -1188,32 +1176,5 @@ html.aw-high-contrast iframe {
       next: nextChunk,
       prev: prevChunk,
       play: () => { btnPlay.click(); },
-      // debug helpers
-      testIndicator: (total, index) => {
-        if (state.minimized) { state.minimized = false; applyUI(); }
-        lastChunks = new Array(total).fill('teste');
-        currentUtterIdx = index >= 0 ? index : -1;
-        globalCurrentIndex = index >= 0 ? index : 0;
-        updatePlayerUI();
-      },
-      debugDump: () => {
-        console.log({
-          state: JSON.parse(JSON.stringify(state)),
-          lastChunks: lastChunks.length || 0,
-          isPlaying,
-          isPaused,
-          globalCurrentIndex,
-          currentUtterIdx
-        });
-      },
-      testSpeakElement: (selOrEl) => {
-        const el = typeof selOrEl === 'string' ? document.querySelector(selOrEl) : selOrEl;
-        const text = nodeToText(el);
-        if (text) {
-          const u = new SpeechSynthesisUtterance(text);
-          u.lang = getEffectiveLang();
-          synth.speak(u);
-        }
-      }
     };
 })();
