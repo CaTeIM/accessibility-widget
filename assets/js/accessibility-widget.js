@@ -236,11 +236,12 @@
     }
 
     // -------------------------
-    // Node -> text extractor (with interactive prefixes)
-    // -------------------------
-    function nodeToText(node) {
+    // Node -> text extractor (with interactive prefixes)
+    // -------------------------
+    function nodeToText(node) {
       const mappedText = [];
       const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
+      const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|IMG|VIDEO)$/; // Tags to completely ignore
 
       // Função recursiva para percorrer a árvore DOM
       function walk(currentNode) {
@@ -248,8 +249,14 @@
           return;
         }
 
+        const tag = (currentNode.tagName || '').toUpperCase();
+
+        // Verifica se o nó atual deve ser ignorado antes de processá-lo
+        if (currentNode.nodeType === Node.ELEMENT_NODE && ignoreTags.test(tag)) {
+            return; // Não processa este elemento nem seus filhos
+        }
+
         // Se for um elemento interativo, trata e não continua para os filhos
-        const tag = (currentNode.tagName || '').toUpperCase();
         const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL)$/;
         if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
           let label = '';
@@ -287,10 +294,7 @@
         }
       }
 
-      const clone = node.cloneNode(true);
-      // Remove elementos que não queremos ler
-      clone.querySelectorAll('script, style, noscript, iframe, svg, img, video').forEach(r => r.remove());
-      walk(clone);
+      walk(node);
       return mappedText;
     }
 
