@@ -922,7 +922,6 @@ html.aw-high-contrast iframe {
       try {
         const selText = window.getSelection().toString().trim();
         if (selText && selText.length > 2) {
-          // Cria um "mapa falso" para o texto selecionado. O marcador não funcionará, mas a leitura sim.
           const mappedText = [{ text: selText, element: document.body }];
           const chunks = splitToChunks(mappedText, 220);
           lastReadMode = 'selection';
@@ -931,15 +930,31 @@ html.aw-high-contrast iframe {
       } catch (e) { console.error('readSelection error', e); }
     }
 
-    function nextChunk() {
-      if (!lastChunks || !lastChunks.length) { alert(getUiString('no_text')); return; }
-      const nextIdx = Math.min(lastChunks.length - 1, Math.max(0, globalCurrentIndex + 1));
-      speakChunksSequentially(lastChunks, nextIdx);
+    function speakChunkAtIndex(index) {
+      if (!synth || !utterQueue.length) return;
+      try {
+        globalCurrentIndex = Math.max(0, Math.min(index, utterQueue.length - 1));
+        synth.cancel();
+        if (utterQueue[globalCurrentIndex]) {
+          synth.speak(utterQueue[globalCurrentIndex]);
+        }
+      } catch (e) {
+        console.error('speakChunkAtIndex error', e);
+      }
     }
+
+    function nextChunk() {
+      if (!lastChunks || !lastChunks.length) { return; }
+      const currentIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
+      const nextIdx = Math.min(lastChunks.length - 1, currentIndex + 1);
+      speakChunkAtIndex(nextIdx);
+    }
+
     function prevChunk() {
-      if (!lastChunks || !lastChunks.length) { alert(getUiString('no_text')); return; }
-      const prevIdx = Math.max(0, globalCurrentIndex - 1);
-      speakChunksSequentially(lastChunks, prevIdx);
+      if (!lastChunks || !lastChunks.length) { return; }
+      const currentIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
+      const prevIdx = Math.max(0, currentIndex - 1);
+      speakChunkAtIndex(prevIdx);
     }
 
     // -------------------------
