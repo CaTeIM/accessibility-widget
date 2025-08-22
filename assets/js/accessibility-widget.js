@@ -514,7 +514,7 @@ html.aw-high-contrast iframe {
     root.setAttribute('aria-hidden', 'false');
     root.innerHTML = `
       <button class="aw-float" id="aw-floating-btn" aria-label="Abrir painel de acessibilidade" aria-controls="aw-panel" aria-expanded="false">
-        <img src="assets/accessibility.svg" alt="Ícone de Acessibilidade" />
+        <img src="https://cateim.github.io/accessibility-widget/assets/accessibility.svg" alt="Ícone de Acessibilidade" />
       </button>
       <div class="aw-miniplayer" id="aw-miniplayer">
         <div class="aw-miniplayer-chunk" id="aw-mini-chunk-text">Trecho: 0 / 0</div>
@@ -934,6 +934,7 @@ html.aw-high-contrast iframe {
       if (!synth || !utterQueue.length) return;
       try {
         globalCurrentIndex = Math.max(0, Math.min(index, utterQueue.length - 1));
+        pendingNextIndex = globalCurrentIndex;
         synth.cancel();
         if (utterQueue[globalCurrentIndex]) {
           synth.speak(utterQueue[globalCurrentIndex]);
