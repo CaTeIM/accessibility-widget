@@ -30,12 +30,12 @@ Adicione a seguinte tag `<script>` em suas páginas HTML, preferencialmente logo
 
 ```html
     ...
-    <script src="assets/js/accessibility-widget.js" defer></script>
+    <script src="./assets/js/accessibility-widget.js" defer></script>
   </body>
 </html>
 ```
 
-- **`src="assets/js/accessibility-widget.js"`**: Este é o caminho correto baseado na estrutura do seu repositório.
+- **`src="./assets/js/accessibility-widget.js"`**: Este é o caminho correto baseado na estrutura do seu repositório.
 - **`defer`**: O atributo `defer` é **altamente recomendado**. Ele garante que o script do widget seja carregado sem bloquear a renderização do restante da página, melhorando a performance.
 
 Uma vez que o script é adicionado, o widget irá se inicializar automaticamente, sem a necessidade de chamar qualquer função.

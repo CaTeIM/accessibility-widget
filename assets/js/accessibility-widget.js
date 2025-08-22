@@ -241,23 +241,19 @@
     function nodeToText(node) {
       const mappedText = [];
       const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
-      const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|IMG|VIDEO)$/; // Tags to completely ignore
+      const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|IMG|VIDEO)$/;
 
-      // Função recursiva para percorrer a árvore DOM
       function walk(currentNode) {
         if (!currentNode || currentNode.nodeType === Node.COMMENT_NODE) {
           return;
         }
 
         const tag = (currentNode.tagName || '').toUpperCase();
-
-        // Verifica se o nó atual deve ser ignorado antes de processá-lo
         if (currentNode.nodeType === Node.ELEMENT_NODE && ignoreTags.test(tag)) {
-            return; // Não processa este elemento nem seus filhos
+            return;
         }
 
-        // Se for um elemento interativo, trata e não continua para os filhos
-        const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL)$/;
+        const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/;
         if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
           let label = '';
           try {
@@ -267,10 +263,9 @@
           let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
           if (!/[.!?…]$/.test(spoken)) spoken += '.';
           mappedText.push({ text: spoken, element: currentNode });
-          return; // Para aqui para não ler o texto dentro do botão duas vezes
+          return;
         }
 
-        // Se for um nó de texto, adiciona ao mapa
         if (currentNode.nodeType === Node.TEXT_NODE) {
           const text = (currentNode.nodeValue || '').trim();
           if (text) {
@@ -278,12 +273,10 @@
           }
         }
 
-        // Continua a caminhada pelos filhos
         for (let i = 0; i < currentNode.childNodes.length; i++) {
           walk(currentNode.childNodes[i]);
         }
 
-        // Adiciona um ponto final se o elemento for um bloco, para criar pausas
         if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
           if (mappedText.length > 0) {
             const lastEntry = mappedText[mappedText.length - 1];
@@ -293,7 +286,7 @@
           }
         }
       }
-
+        
       walk(node);
       return mappedText;
     }
