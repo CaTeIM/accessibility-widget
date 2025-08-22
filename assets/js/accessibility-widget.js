@@ -801,10 +801,10 @@ html.aw-high-contrast iframe {
 
       for (let i = 0; i < lastChunks.length; i++) {
         const chunkObject = lastChunks[i];
-        const u = new SpeechSynthesisUtterance(chunkObject.text); // Usa o texto do objeto
+        const u = new SpeechSynthesisUtterance(chunkObject.text);
         u.rate = state.rate || defaults.rate;
         u.pitch = state.pitch || defaults.pitch;
-        u._elements = chunkObject.elements; // Guarda a referência dos elementos
+        u._elements = chunkObject.elements;
 
         try {
           const vi = parseInt(selectVoice.value || -1, 10);
@@ -815,7 +815,7 @@ html.aw-high-contrast iframe {
 
         u.onstart = function () {
           currentUtterIdx = u._idx;
-          highlightSpokenText(u._elements); // Passa os ELEMENTOS, não o texto
+          highlightSpokenText(u._elements);
           updatePlayerUI();
         };
 
@@ -831,7 +831,7 @@ html.aw-high-contrast iframe {
                 try { synth.speak(utterQueue[nextIdx]); } catch (e) { console.warn(e); }
               } else {
                 isPlaying = false;
-                removeHighlight(); // Limpa o último marcador no final da leitura
+                removeHighlight();
                 updatePlayerUI();
               }
             }, delay);
@@ -846,6 +846,7 @@ html.aw-high-contrast iframe {
 
       try {
         if (startIndex < utterQueue.length) {
+          highlightSpokenText(utterQueue[startIndex]._elements);
           synth.speak(utterQueue[startIndex]);
           globalCurrentIndex = startIndex;
         }
