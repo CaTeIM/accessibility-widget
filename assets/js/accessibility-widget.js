@@ -24,7 +24,7 @@
       if (!raw) return {};
       const parsed = JSON.parse(raw);
       return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (e) { 
+    } catch (e) {
       console.warn('AccessibilityWidget: invalid settings', e);
       return {};
     }
@@ -103,55 +103,55 @@
     // Domain protection & chunking
     // -------------------------
     function normalizeTextForReading(text) {
-      if (!text) return '';
+      if (!text) return '';
 
-      const lang = getEffectiveLang();
-      const isPt = lang.startsWith('pt');
-      const at = isPt ? ' arroba ' : ' at ';
-      const dot = isPt ? ' ponto ' : ' dot ';
+      const lang = getEffectiveLang();
+      const isPt = lang.startsWith('pt');
+      const at = isPt ? ' arroba ' : ' at ';
+      const dot = isPt ? ' ponto ' : ' dot ';
 
-      // 1. Lida com e-mails primeiro, convertendo-os para uma forma falada
-      text = text.replace(/([^\s@]+)@([^\s@]+)/g, (match, local, domain) => {
-          const spokenDomain = domain.replace(/\./g, dot);
-          return `${local.trim()}${at}${spokenDomain}`.trim();
-      });
+      // 1. Lida com e-mails primeiro, convertendo-os para uma forma falada
+      text = text.replace(/([^\s@]+)@([^\s@]+)/g, (match, local, domain) => {
+          const spokenDomain = domain.replace(/\./g, dot);
+          return `${local.trim()}${at}${spokenDomain}`.trim();
+      });
 
-      // 2. Lida com domínios/URLs que não são e-mails
-      // A regex usa "negative lookbehind" ((?<!@)) para não pegar e-mails de novo
-      // e ((?<!\d)) para não pegar números como 1.50
-      text = text.replace(/(?<!@|\d)\b([a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z.]{2,})\b/g, (match) => {
-          // Ignora abreviações comuns para não estragá-las (ex: U.S.A.)
-          if (match.match(/^[A-Z]\.[A-Z]/)) {
-              return match;
-          }
-          return match.replace(/\./g, dot);
-      });
+      // 2. Lida com domínios/URLs que não são e-mails
+      // A regex usa "negative lookbehind" ((?<!@)) para não pegar e-mails de novo
+      // e ((?<!\d)) para não pegar números como 1.50
+      text = text.replace(/(?<!@|\d)\b([a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z.]{2,})\b/g, (match) => {
+          // Ignora abreviações comuns para não estragá-las (ex: U.S.A.)
+          if (match.match(/^[A-Z]\.[A-Z]/)) {
+              return match;
+          }
+          return match.replace(/\./g, dot);
+      });
 
-      // 3. Normaliza quebras de linha e pontuação para pausas corretas
-      let t = text.replace(/\r\n?/g, '\n').replace(/\n{2,}/g, '.\n').replace(/\n/g, '. ');
-      try {
-          // Adiciona espaço após pontuação para separar frases
-          t = t.replace(/([.!?…])(\p{Lu}|\d|["'“”])/gu, '$1 $2');
-      } catch (e) {
-          t = t.replace(/([.!?…])([A-Z0-9"'])/g, '$1 $2');
-      }
+      // 3. Normaliza quebras de linha e pontuação para pausas corretas
+      let t = text.replace(/\r\n?/g, '\n').replace(/\n{2,}/g, '.\n').replace(/\n/g, '. ');
+      try {
+          // Adiciona espaço após pontuação para separar frases
+          t = t.replace(/([.!?…])(\p{Lu}|\d|["'“”])/gu, '$1 $2');
+      } catch (e) {
+          t = t.replace(/([.!?…])([A-Z0-9"'])/g, '$1 $2');
+      }
 
-      // 4. Limpeza final
-      t = t.replace(/\s{2,}/g, ' ').trim();
-      return t;
-    }
+      // 4. Limpeza final
+      t = t.replace(/\s{2,}/g, ' ').trim();
+      return t;
+    }
 
     // -------------------------
-    // Domain protection & chunking
-    // -------------------------
-    function splitToChunks(mappedText, maxLen = 220) {
-      if (!mappedText || !mappedText.length) return [];
-      
-      const chunks = [];
-      let currentChunk = { text: '', elements: [] };
+    // Domain protection & chunking
+    // -------------------------
+    function splitToChunks(mappedText, maxLen = 220) {
+      if (!mappedText || !mappedText.length) return [];
 
-      mappedText.forEach(item => {
-        // O ponto final que adicionamos para pausas não precisa ser lido
+      const chunks = [];
+      let currentChunk = { text: '', elements: [] };
+
+      mappedText.forEach(item => {
+        // O ponto final que adicionamos para pausas não precisa ser lido
         if (item.text === '.') {
             if (currentChunk.text) {
                 chunks.push(currentChunk);
@@ -160,26 +160,26 @@
             return;
         }
 
-        const processedText = normalizeTextForReading(item.text);
-        
-        if ((currentChunk.text + ' ' + processedText).trim().length > maxLen && currentChunk.text) {
-          chunks.push(currentChunk);
-          currentChunk = { text: processedText, elements: [item.element] };
-        } else {
-          currentChunk.text = (currentChunk.text + ' ' + processedText).trim();
-          if (!currentChunk.elements.includes(item.element)) {
-            currentChunk.elements.push(item.element);
-          }
-        }
-      });
+        const processedText = normalizeTextForReading(item.text);
 
-      if (currentChunk.text) {
-        chunks.push(currentChunk);
-      }
-      
-      console.debug('AW: Generated mapped chunks:', chunks.length);
-      return chunks;
-    }
+        if ((currentChunk.text + ' ' + processedText).trim().length > maxLen && currentChunk.text) {
+          chunks.push(currentChunk);
+          currentChunk = { text: processedText, elements: [item.element] };
+        } else {
+          currentChunk.text = (currentChunk.text + ' ' + processedText).trim();
+          if (!currentChunk.elements.includes(item.element)) {
+            currentChunk.elements.push(item.element);
+          }
+        }
+      });
+
+      if (currentChunk.text) {
+        chunks.push(currentChunk);
+      }
+
+      console.debug('AW: Generated mapped chunks:', chunks.length);
+      return chunks;
+    }
 
     function pauseForChunkEnd(text) {
       if (!text) return 180;
@@ -236,93 +236,102 @@
     }
 
     // -------------------------
-    // Node -> text extractor (with interactive prefixes)
-    // -------------------------
-    function nodeToText(node) {
-      const mappedText = [];
-      const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
+    // Node -> text extractor (with interactive prefixes) - v2 (Robust)
+    // -------------------------
+    function nodeToText(node) {
+      const mappedText = [];
+      const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
       const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|IMG|VIDEO)$/;
 
-      function walk(currentNode) {
-        if (!currentNode || currentNode.nodeType === Node.COMMENT_NODE) {
-          return;
-        }
+      const terminalTags = /^(BUTTON|INPUT|TEXTAREA|SELECT)$/;
+
+      function walk(currentNode) {
+        if (!currentNode || currentNode.nodeType === Node.COMMENT_NODE) {
+          return;
+        }
 
         const tag = (currentNode.tagName || '').toUpperCase();
         if (currentNode.nodeType === Node.ELEMENT_NODE && ignoreTags.test(tag)) {
             return;
         }
 
-        const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/;
-        if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
-          let label = '';
-          try {
-            label = currentNode.getAttribute('aria-label') || currentNode.getAttribute('title') || currentNode.getAttribute('placeholder') || currentNode.value || (currentNode.innerText || currentNode.textContent).trim();
-          } catch (e) {}
-          const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
-          let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
-          if (!/[.!?…]$/.test(spoken)) spoken += '.';
-          mappedText.push({ text: spoken, element: currentNode });
-          return;
-        }
+        let hasProcessedNode = false;
 
-        if (currentNode.nodeType === Node.TEXT_NODE) {
-          const text = (currentNode.nodeValue || '').trim();
-          if (text) {
-            mappedText.push({ text: text, element: currentNode.parentElement });
-          }
-        }
+        if (currentNode.nodeType === Node.ELEMENT_NODE && (terminalTags.test(tag) || currentNode.hasAttribute('role'))) {
+            let label = '';
+            try {
+                label = currentNode.getAttribute('aria-label') ||
+                        currentNode.getAttribute('title') ||
+                        currentNode.getAttribute('placeholder') ||
+                        currentNode.value ||
+                        (tag === 'BUTTON' ? (currentNode.innerText || currentNode.textContent) : '').trim();
+            } catch (e) {}
 
-        for (let i = 0; i < currentNode.childNodes.length; i++) {
-          walk(currentNode.childNodes[i]);
-        }
+            if (label) {
+                const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
+                let spoken = (prefix + label).trim();
+                if (!/[.!?…]$/.test(spoken)) spoken += '.';
+                mappedText.push({ text: spoken, element: currentNode });
+                hasProcessedNode = true;
+            }
+        }
 
-        if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
-          if (mappedText.length > 0) {
-            const lastEntry = mappedText[mappedText.length - 1];
-            if (lastEntry.text !== '.') {
-              mappedText.push({ text: '.', element: currentNode });
-            }
-          }
-        }
-      }
+        if (currentNode.nodeType === Node.TEXT_NODE) {
+             const text = (currentNode.nodeValue || '').trim();
+             if (text) {
+                 mappedText.push({ text: text, element: currentNode.parentElement });
+             }
+        }
+
+        if (!hasProcessedNode) {
+            for (let i = 0; i < currentNode.childNodes.length; i++) {
+                walk(currentNode.childNodes[i]);
+            }
+        }
+
+        if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
+          if (mappedText.length > 0 && mappedText[mappedText.length - 1].text !== '.') {
+             mappedText.push({ text: '.', element: currentNode });
+          }
+        }
+      }
         
-      walk(node);
-      return mappedText;
-    }
+      walk(node);
+      return mappedText;
+    }
 
     // -------------------------
     // getReadableText - aggregates header + main or body
     // -------------------------
     function getReadableText() {
-      try {
-        const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
-        let headerMap = [];
-        for (let sel of headerCandidates) {
-          const h = document.querySelector(sel);
-          if (h) {
-            const map = nodeToText(h);
-            if (map.length > 2) {
-                headerMap = map;
-                break;
-            }
-          }
-        }
+      try {
+        const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
+        let headerMap = [];
+        for (let sel of headerCandidates) {
+          const h = document.querySelector(sel);
+          if (h) {
+            const map = nodeToText(h);
+            if (map.length > 2) {
+                headerMap = map;
+                break;
+            }
+          }
+        }
 
-        const selectors = ['main', 'article', '#content', '.content', '#profile-main-content'];
-        for (let s of selectors) {
-          const el = document.querySelector(s);
-          if (el) {
-            const mainMap = nodeToText(el);
-            if (mainMap.length > 5) {
-              return headerMap.concat(mainMap);
-            }
-          }
-        }
-        // Fallback para o body
-        return nodeToText(document.body) || [];
-      } catch (e) { console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || []; }
-    }
+        const selectors = ['main', 'article', '#content', '.content', '#profile-main-content'];
+        for (let s of selectors) {
+          const el = document.querySelector(s);
+          if (el) {
+            const mainMap = nodeToText(el);
+            if (mainMap.length > 5) {
+              return headerMap.concat(mainMap);
+            }
+          }
+        }
+        // Fallback para o body
+        return nodeToText(document.body) || [];
+      } catch (e) { console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || []; }
+    }
 
     // -------------------------
     // UI & CSS (include indicator styles)
@@ -630,64 +639,64 @@ html.aw-high-contrast iframe {
     const highlighter = document.createElement('div'); highlighter.id = 'aw-highlighter'; document.body.appendChild(highlighter);
 
     // Referências do Miniplayer
-    const miniPlayer = document.getElementById('aw-miniplayer');
-    const btnMiniPrev = document.getElementById('aw-mini-prev');
-    const btnMiniPlay = document.getElementById('aw-mini-playpause');
-    const btnMiniNext = document.getElementById('aw-mini-next');
-    const miniChunkText = document.getElementById('aw-mini-chunk-text');
-  
+    const miniPlayer = document.getElementById('aw-miniplayer');
+    const btnMiniPrev = document.getElementById('aw-mini-prev');
+    const btnMiniPlay = document.getElementById('aw-mini-playpause');
+    const btnMiniNext = document.getElementById('aw-mini-next');
+    const miniChunkText = document.getElementById('aw-mini-chunk-text');
+
     // Indicator refs
     const chunkIndicator = document.getElementById('aw-chunk-indicator');
     const chunkText = document.getElementById('aw-chunk-text');
     const chunkFill = document.getElementById('aw-chunk-fill');
 
     // -------------------------
-    // Lógica do Marcador Visual
-    // -------------------------
-    function removeHighlight() {
-      if (highlighter) {
-        highlighter.classList.remove('aw-visible');
-        // Reseta a posição após a transição para não ficar "flutuando" invisível
-        setTimeout(() => {
-          highlighter.style.width = '0px';
-          highlighter.style.height = '0px';
-          highlighter.style.top = '0px';
-          highlighter.style.left = '0px';
-        }, 300); // Deve ser um pouco mais que o tempo da transição no CSS
-      }
-    }
+    // Lógica do Marcador Visual
+    // -------------------------
+    function removeHighlight() {
+      if (highlighter) {
+        highlighter.classList.remove('aw-visible');
+        // Reseta a posição após a transição para não ficar "flutuando" invisível
+        setTimeout(() => {
+          highlighter.style.width = '0px';
+          highlighter.style.height = '0px';
+          highlighter.style.top = '0px';
+          highlighter.style.left = '0px';
+        }, 300); // Deve ser um pouco mais que o tempo da transição no CSS
+      }
+    }
 
-    function highlightSpokenText(elements) {
-      if (!elements || !elements.length || lastReadMode === 'selection') {
-        removeHighlight();
-        return;
-      }
+    function highlightSpokenText(elements) {
+      if (!elements || !elements.length || lastReadMode === 'selection') {
+        removeHighlight();
+        return;
+      }
 
-      let elementToHighlight = elements[0];
-      
-      // Tenta encontrar um parente de bloco mais significativo para destacar
-      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, .info-display p, .btn, .wallet-disclaimer');
-      if (goodParent) {
-        elementToHighlight = goodParent;
-      }
+      let elementToHighlight = elements[0];
 
-      const rect = elementToHighlight.getBoundingClientRect();
-      
-      if (rect.width === 0 || rect.height === 0) {
-        removeHighlight();
-        return;
-      }
+      // Tenta encontrar um parente de bloco mais significativo para destacar
+      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, .info-display p, .btn, .wallet-disclaimer');
+      if (goodParent) {
+        elementToHighlight = goodParent;
+      }
 
-      highlighter.style.top = `${rect.top + window.scrollY}px`;
-      highlighter.style.left = `${rect.left + window.scrollX}px`;
-      highlighter.style.width = `${rect.width}px`;
-      highlighter.style.height = `${rect.height}px`;
+      const rect = elementToHighlight.getBoundingClientRect();
 
-      highlighter.classList.add('aw-visible');
-      
-      elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  
+      if (rect.width === 0 || rect.height === 0) {
+        removeHighlight();
+        return;
+      }
+
+      highlighter.style.top = `${rect.top + window.scrollY}px`;
+      highlighter.style.left = `${rect.left + window.scrollX}px`;
+      highlighter.style.width = `${rect.width}px`;
+      highlighter.style.height = `${rect.height}px`;
+
+      highlighter.classList.add('aw-visible');
+
+      elementToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
     // -------------------------
     // Speech synthesis setup
     // -------------------------
@@ -736,124 +745,124 @@ html.aw-high-contrast iframe {
     let currentUtterIdx = -1;
 
     function updateChunkIndicator() {
-      try {
-        if (!lastChunks || !lastChunks.length) {
-          chunkIndicator.classList.remove('aw-indicator-visible');
-          return;
-        }
-        let displayIndex = 0;
-        if (currentUtterIdx >= 0) displayIndex = currentUtterIdx + 1;
-        else displayIndex = Math.min(globalCurrentIndex + 1, lastChunks.length);
+      try {
+        if (!lastChunks || !lastChunks.length) {
+          chunkIndicator.classList.remove('aw-indicator-visible');
+          return;
+        }
+        let displayIndex = 0;
+        if (currentUtterIdx >= 0) displayIndex = currentUtterIdx + 1;
+        else displayIndex = Math.min(globalCurrentIndex + 1, lastChunks.length);
 
-        const total = lastChunks.length;
-        const textContent = `Trecho: ${Math.max(1, displayIndex)} / ${total}`;
-        
+        const total = lastChunks.length;
+        const textContent = `Trecho: ${Math.max(1, displayIndex)} / ${total}`;
+
         // Atualiza os dois indicadores
-        chunkIndicator.classList.add('aw-indicator-visible');
-        chunkText.textContent = textContent;
+        chunkIndicator.classList.add('aw-indicator-visible');
+        chunkText.textContent = textContent;
         miniChunkText.textContent = textContent;
 
-        const pct = total <= 1 ? 100 : Math.round(((Math.max(0, (displayIndex - 1)) / (total - 1)) * 100));
-        chunkFill.style.width = pct + '%';
-      } catch (e) { /* noop */ }
-    }
+        const pct = total <= 1 ? 100 : Math.round(((Math.max(0, (displayIndex - 1)) / (total - 1)) * 100));
+        chunkFill.style.width = pct + '%';
+      } catch (e) { /* noop */ }
+    }
 
     function updatePlayerUI() {
-      try {
-        if (isPlaying && !isPaused) {
-          btnPlay.classList.add('aw-playing');
-          btnMiniPlay.classList.add('aw-playing');
-          btnPlay.title = getUiString('pause');
-          btnPlay.setAttribute('aria-label', getUiString('pause'));
-        } else {
-          btnPlay.classList.remove('aw-playing');
-          btnMiniPlay.classList.remove('aw-playing');
-          btnPlay.title = getUiString('play');
-          btnPlay.setAttribute('aria-label', getUiString('play'));
-        }
-        if (!lastChunks || !lastChunks.length) {
-          btnPrev.setAttribute('disabled','disabled'); btnNext.setAttribute('disabled','disabled'); btnStop.setAttribute('disabled','disabled');
-        } else {
-          btnPrev.removeAttribute('disabled'); btnNext.removeAttribute('disabled'); btnStop.removeAttribute('disabled');
-        }
+      try {
+        if (isPlaying && !isPaused) {
+          btnPlay.classList.add('aw-playing');
+          btnMiniPlay.classList.add('aw-playing');
+          btnPlay.title = getUiString('pause');
+          btnPlay.setAttribute('aria-label', getUiString('pause'));
+        } else {
+          btnPlay.classList.remove('aw-playing');
+          btnMiniPlay.classList.remove('aw-playing');
+          btnPlay.title = getUiString('play');
+          btnPlay.setAttribute('aria-label', getUiString('play'));
+        }
+        if (!lastChunks || !lastChunks.length) {
+          btnPrev.setAttribute('disabled','disabled'); btnNext.setAttribute('disabled','disabled'); btnStop.setAttribute('disabled','disabled');
+        } else {
+          btnPrev.removeAttribute('disabled'); btnNext.removeAttribute('disabled'); btnStop.removeAttribute('disabled');
+        }
 
-        if (isPlaying || isPaused) root.classList.add('aw-player-active'); else root.classList.remove('aw-player-active');
+        if (isPlaying || isPaused) root.classList.add('aw-player-active'); else root.classList.remove('aw-player-active');
 
-        if ((isPlaying || isPaused) && lastReadMode === 'page') btnRead.classList.add('aw-toggle-active'); else btnRead.classList.remove('aw-toggle-active');
-        if ((isPlaying || isPaused) && lastReadMode === 'selection') btnReadSelection.classList.add('aw-toggle-active'); else btnReadSelection.classList.remove('aw-toggle-active');
+        if ((isPlaying || isPaused) && lastReadMode === 'page') btnRead.classList.add('aw-toggle-active'); else btnRead.classList.remove('aw-toggle-active');
+        if ((isPlaying || isPaused) && lastReadMode === 'selection') btnReadSelection.classList.add('aw-toggle-active'); else btnReadSelection.classList.remove('aw-toggle-active');
 
-        updateChunkIndicator();
-      } catch (e) { console.warn('updatePlayerUI', e); }
-    }
+        updateChunkIndicator();
+      } catch (e) { console.warn('updatePlayerUI', e); }
+    }
 
     function speakChunksSequentially(chunks, startIndex = 0) {
-      if (!synth) { alert(getUiString('tts_not_supported')); return; }
-      stopReading();
-      if (!Array.isArray(chunks) || !chunks.length) {
-        lastChunks = [];
-        updatePlayerUI();
-        return;
-      }
+      if (!synth) { alert(getUiString('tts_not_supported')); return; }
+      stopReading();
+      if (!Array.isArray(chunks) || !chunks.length) {
+        lastChunks = [];
+        updatePlayerUI();
+        return;
+      }
 
-      console.debug(`AW: speakChunksSequentially starting with ${chunks.length} chunks from index ${startIndex}`);
-      lastChunks = chunks.slice(0);
-      globalCurrentIndex = Math.max(0, Math.min(startIndex, lastChunks.length - 1));
-      utterQueue = []; isPaused = false; pendingNextIndex = null; isPlaying = true; currentUtterIdx = -1;
+      console.debug(`AW: speakChunksSequentially starting with ${chunks.length} chunks from index ${startIndex}`);
+      lastChunks = chunks.slice(0);
+      globalCurrentIndex = Math.max(0, Math.min(startIndex, lastChunks.length - 1));
+      utterQueue = []; isPaused = false; pendingNextIndex = null; isPlaying = true; currentUtterIdx = -1;
 
-      for (let i = 0; i < lastChunks.length; i++) {
+      for (let i = 0; i < lastChunks.length; i++) {
         const chunkObject = lastChunks[i];
-        const u = new SpeechSynthesisUtterance(chunkObject.text); // Usa o texto do objeto
-        u.rate = state.rate || defaults.rate;
-        u.pitch = state.pitch || defaults.pitch;
+        const u = new SpeechSynthesisUtterance(chunkObject.text); // Usa o texto do objeto
+        u.rate = state.rate || defaults.rate;
+        u.pitch = state.pitch || defaults.pitch;
         u._elements = chunkObject.elements; // Guarda a referência dos elementos
 
-        try {
-          const vi = parseInt(selectVoice.value || -1, 10);
-          if (!isNaN(vi) && vi >= 0 && voices[vi]) { u.voice = voices[vi]; u.lang = voices[vi].lang || getEffectiveLang(); }
-          else u.lang = getEffectiveLang();
-        } catch (e) { u.lang = getEffectiveLang(); }
-        u._idx = i;
+        try {
+          const vi = parseInt(selectVoice.value || -1, 10);
+          if (!isNaN(vi) && vi >= 0 && voices[vi]) { u.voice = voices[vi]; u.lang = voices[vi].lang || getEffectiveLang(); }
+          else u.lang = getEffectiveLang();
+        } catch (e) { u.lang = getEffectiveLang(); }
+        u._idx = i;
 
-        u.onstart = function () {
-          console.debug('AW: utter start', u._idx);
-          currentUtterIdx = u._idx;
+        u.onstart = function () {
+          console.debug('AW: utter start', u._idx);
+          currentUtterIdx = u._idx;
           highlightSpokenText(u._elements); // Passa os ELEMENTOS, não o texto
-          updatePlayerUI();
-        };
+          updatePlayerUI();
+        };
 
-        u.onend = function () {
-          console.debug('AW: utter end', u._idx);
-          currentUtterIdx = -1;
-          if (!isPaused) {
-            globalCurrentIndex = u._idx + 1;
-            const delay = pauseForChunkEnd(u.text) || 200;
-            setTimeout(() => {
-              if (isPaused) return;
-              const nextIdx = u._idx + 1;
-              if (nextIdx < utterQueue.length) {
-                try { synth.speak(utterQueue[nextIdx]); } catch (e) { console.warn(e); }
-              } else {
-                isPlaying = false;
+        u.onend = function () {
+          console.debug('AW: utter end', u._idx);
+          currentUtterIdx = -1;
+          if (!isPaused) {
+            globalCurrentIndex = u._idx + 1;
+            const delay = pauseForChunkEnd(u.text) || 200;
+            setTimeout(() => {
+              if (isPaused) return;
+              const nextIdx = u._idx + 1;
+              if (nextIdx < utterQueue.length) {
+                try { synth.speak(utterQueue[nextIdx]); } catch (e) { console.warn(e); }
+              } else {
+                isPlaying = false;
                 removeHighlight(); // Limpa o último marcador no final da leitura
-                updatePlayerUI();
-              }
-            }, delay);
-          }
-        };
-        u.onerror = function (e) { console.warn('utterance error', e); };
+                updatePlayerUI();
+              }
+            }, delay);
+          }
+        };
+        u.onerror = function (e) { console.warn('utterance error', e); };
 
-        utterQueue.push(u);
-      }
+        utterQueue.push(u);
+      }
 
-      updatePlayerUI();
+      updatePlayerUI();
 
-      try {
-        if (startIndex < utterQueue.length) {
-          synth.speak(utterQueue[startIndex]);
-          globalCurrentIndex = startIndex;
-        }
-      } catch (e) { console.error(e); }
-    }
+      try {
+        if (startIndex < utterQueue.length) {
+          synth.speak(utterQueue[startIndex]);
+          globalCurrentIndex = startIndex;
+        }
+      } catch (e) { console.error(e); }
+    }
 
     function stopReading() {
       removeHighlight();
@@ -873,67 +882,67 @@ html.aw-high-contrast iframe {
     }
 
     function pauseResume() {
-      if (!synth) return;
-      try {
-        if (isPaused) {
-          // LÓGICA DE RETOMAR
-          isPaused = false;
-          isPlaying = true;
-          updatePlayerUI();
-          // Se a fala foi interrompida e temos um próximo trecho pendente, comece por ele.
-          if (pendingNextIndex !== null && pendingNextIndex < lastChunks.length) {
-            speakChunksSequentially(lastChunks, pendingNextIndex);
-          } else {
-            // Senão, apenas continue a fala que já estava pausada no navegador.
-            synth.resume();
-          }
-        } else if (isPlaying) {
-          // LÓGICA DE PAUSAR
-          isPaused = true;
-          // Guarda o índice do trecho atual para saber de onde voltar.
-          pendingNextIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
-          synth.pause(); // Usa o pause nativo que é mais simples
-          updatePlayerUI();
-        }
-      } catch (err) { console.warn('pauseResume error', err); }
-    }
+      if (!synth) return;
+      try {
+        if (isPaused) {
+          // LÓGICA DE RETOMAR
+          isPaused = false;
+          isPlaying = true;
+          updatePlayerUI();
+          // Se a fala foi interrompida e temos um próximo trecho pendente, comece por ele.
+          if (pendingNextIndex !== null && pendingNextIndex < lastChunks.length) {
+            speakChunksSequentially(lastChunks, pendingNextIndex);
+          } else {
+            // Senão, apenas continue a fala que já estava pausada no navegador.
+            synth.resume();
+          }
+        } else if (isPlaying) {
+          // LÓGICA DE PAUSAR
+          isPaused = true;
+          // Guarda o índice do trecho atual para saber de onde voltar.
+          pendingNextIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
+          synth.pause(); // Usa o pause nativo que é mais simples
+          updatePlayerUI();
+        }
+      } catch (err) { console.warn('pauseResume error', err); }
+    }
 
     function readPage(fromIndex = 0) {
-      // FIX: Ensure panel is open to show indicator
-      if (state.minimized) {
-        state.minimized = false;
-        safeSave(state);
-        applyUI();
-      }
-      try {
+      // FIX: Ensure panel is open to show indicator
+      if (state.minimized) {
+        state.minimized = false;
+        safeSave(state);
+        applyUI();
+      }
+      try {
         // Agora pega o mapa de texto em vez de texto puro
-        const mappedText = getReadableText(); 
-        if (!mappedText || mappedText.length < 1) { alert(getUiString('no_text')); return; }
+        const mappedText = getReadableText();
+        if (!mappedText || mappedText.length < 1) { alert(getUiString('no_text')); return; }
         // Passa o mapa para a função de quebrar em pedaços
-        const chunks = splitToChunks(mappedText, 220);
-        lastReadMode = 'page';
-        speakChunksSequentially(chunks, fromIndex || 0);
-      } catch (e) { console.error('readPage error', e); alert(getUiString('error_start')); }
-    }
+        const chunks = splitToChunks(mappedText, 220);
+        lastReadMode = 'page';
+        speakChunksSequentially(chunks, fromIndex || 0);
+      } catch (e) { console.error('readPage error', e); alert(getUiString('error_start')); }
+    }
 
-    function readSelection(fromIndex = 0) {
-      // FIX: Ensure panel is open to show indicator
-      if (state.minimized) {
-        state.minimized = false;
-        safeSave(state);
-        applyUI();
-      }
-      try {
-        const selText = window.getSelection().toString().trim();
-        if (selText && selText.length > 2) {
+    function readSelection(fromIndex = 0) {
+      // FIX: Ensure panel is open to show indicator
+      if (state.minimized) {
+        state.minimized = false;
+        safeSave(state);
+        applyUI();
+      }
+      try {
+        const selText = window.getSelection().toString().trim();
+        if (selText && selText.length > 2) {
           // Cria um "mapa falso" para o texto selecionado. O marcador não funcionará, mas a leitura sim.
           const mappedText = [{ text: selText, element: document.body }];
-          const chunks = splitToChunks(mappedText, 220);
-          lastReadMode = 'selection';
-          speakChunksSequentially(chunks, fromIndex || 0);
-        } else alert(getUiString('select_text'));
-      } catch (e) { console.error('readSelection error', e); }
-    }
+          const chunks = splitToChunks(mappedText, 220);
+          lastReadMode = 'selection';
+          speakChunksSequentially(chunks, fromIndex || 0);
+        } else alert(getUiString('select_text'));
+      } catch (e) { console.error('readSelection error', e); }
+    }
 
     function nextChunk() {
       if (!lastChunks || !lastChunks.length) { alert(getUiString('no_text')); return; }
@@ -1051,9 +1060,9 @@ html.aw-high-contrast iframe {
     btnReadSelection.addEventListener('click', (e) => { e.stopPropagation(); readSelection(0); });
 
     // Eventos dos botões do Miniplayer
-    btnMiniPrev.addEventListener('click', (e) => { e.stopPropagation(); prevChunk(); });
-    btnMiniNext.addEventListener('click', (e) => { e.stopPropagation(); nextChunk(); });
-    btnMiniPlay.addEventListener('click', (e) => { e.stopPropagation(); pauseResume(); });
+    btnMiniPrev.addEventListener('click', (e) => { e.stopPropagation(); prevChunk(); });
+    btnMiniNext.addEventListener('click', (e) => { e.stopPropagation(); nextChunk(); });
+    btnMiniPlay.addEventListener('click', (e) => { e.stopPropagation(); pauseResume(); });
 
     document.addEventListener('keydown', function (e) {
       if (e.altKey && !e.shiftKey && !e.ctrlKey && (e.key === 'm' || e.key === 'M')) {
@@ -1113,41 +1122,41 @@ html.aw-high-contrast iframe {
     }
 
     function applyUI() {
-      console.debug('AW: applyUI start', JSON.parse(JSON.stringify(state)));
-      try {
-        // 1. Visibilidade global
-        if (state.hidden) {
-          root.classList.add('aw-hidden');
-          return;
-        } else {
-          root.classList.remove('aw-hidden');
-        }
+      console.debug('AW: applyUI start', JSON.parse(JSON.stringify(state)));
+      try {
+        // 1. Visibilidade global
+        if (state.hidden) {
+          root.classList.add('aw-hidden');
+          return;
+        } else {
+          root.classList.remove('aw-hidden');
+        }
 
-        // 2. Lógica de Minimizar / Miniplayer
-        if (state.minimized) {
-          root.classList.add('aw-minimized');
-          // Se a leitura estiver ativa, mostre o miniplayer
-          if (isPlaying || isPaused) {
-            root.classList.add('aw-miniplayer-visible');
-          } else {
-            root.classList.remove('aw-miniplayer-visible');
-          }
-        } else {
-          // Se o painel estiver aberto, esconda o miniplayer e o botão flutuante
-          root.classList.remove('aw-minimized');
-          root.classList.remove('aw-miniplayer-visible');
-        }
-        
-        console.debug(`AW: applyUI end -> Minimized: ${state.minimized}, DOM Class: ${root.className}`);
+        // 2. Lógica de Minimizar / Miniplayer
+        if (state.minimized) {
+          root.classList.add('aw-minimized');
+          // Se a leitura estiver ativa, mostre o miniplayer
+          if (isPlaying || isPaused) {
+            root.classList.add('aw-miniplayer-visible');
+          } else {
+            root.classList.remove('aw-miniplayer-visible');
+          }
+        } else {
+          // Se o painel estiver aberto, esconda o miniplayer e o botão flutuante
+          root.classList.remove('aw-minimized');
+          root.classList.remove('aw-miniplayer-visible');
+        }
 
-        // 3. Outros ajustes
-        document.documentElement.style.fontSize = (state.fontSize || defaults.fontSize) + 'px';
-        spanFontSize && (spanFontSize.textContent = (state.fontSize || defaults.fontSize) + 'px');
+        console.debug(`AW: applyUI end -> Minimized: ${state.minimized}, DOM Class: ${root.className}`);
 
-        updateControlButtonsUI();
-        updatePlayerUI();
-      } catch (e) { console.warn('AccessibilityWidget.applyUI error', e); }
-    }
+        // 3. Outros ajustes
+        document.documentElement.style.fontSize = (state.fontSize || defaults.fontSize) + 'px';
+        spanFontSize && (spanFontSize.textContent = (state.fontSize || defaults.fontSize) + 'px');
+
+        updateControlButtonsUI();
+        updatePlayerUI();
+      } catch (e) { console.warn('AccessibilityWidget.applyUI error', e); }
+    }
 
     function attachRangeFillHandlers() {
       const ranges = document.querySelectorAll('#accessibility-widget input[type="range"]');
@@ -1167,7 +1176,7 @@ html.aw-high-contrast iframe {
       const rootEl = document.getElementById('accessibility-widget');
       if (rootEl) rootEl.style.removeProperty('--aw-range-fill');
     }
-    
+
     // Initial setup
     attachRangeFillHandlers();
     setTimeout(() => { applyComputedTheme(); if (synth) populateVoices(); }, 700);
