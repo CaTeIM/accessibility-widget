@@ -669,7 +669,7 @@ html.aw-high-contrast iframe {
       let elementToHighlight = elements[0];
       
       // Tenta encontrar um parente de bloco mais significativo para destacar
-      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, .info-display p, .btn');
+      const goodParent = elements[0].closest('p, h1, h2, h3, h4, h5, h6, li, dt, dd, .info-display p, .btn, .wallet-disclaimer');
       if (goodParent) {
         elementToHighlight = goodParent;
       }
