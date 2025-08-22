@@ -513,7 +513,7 @@ html.aw-high-contrast iframe {
     root.id = 'accessibility-widget';
     root.setAttribute('aria-hidden', 'false');
     root.innerHTML = `
-      <button class="aw-float" id="aw-floating-btn" title="Acessibilidade (Abrir)" aria-label="Abrir acessibilidade">
+      <button class="aw-float" id="aw-floating-btn" aria-label="Abrir painel de acessibilidade" aria-controls="aw-panel" aria-expanded="false">
         <img src="assets/accessibility.svg" alt="Ícone de Acessibilidade" />
       </button>
       <div class="aw-miniplayer" id="aw-miniplayer">
@@ -531,10 +531,10 @@ html.aw-high-contrast iframe {
           </button>
         </div>
       </div>
-      <div class="aw-panel" id="aw-panel" role="region" aria-label="Acessibilidade">
+      <div class="aw-panel" id="aw-panel" role="dialog" aria-modal="true" aria-labelledby="aw-title-text" style="display: none;">
         <div class="aw-title">
           <div style="display:flex;align-items:center;gap:8px;">
-            <strong>Acessibilidade</strong>
+            <strong id="aw-title-text">Acessibilidade</strong>
             <span style="font-size:12px;color:var(--title-muted,#cfd8e3);">(Alt+M)</span>
           </div>
           <div>
@@ -603,7 +603,7 @@ html.aw-high-contrast iframe {
         </div>
       </div>
     `;
-    document.body.appendChild(root);
+    document.body.prepend(root);
 
     // Element refs
     const floatingBtn = document.getElementById('aw-floating-btn');
@@ -951,6 +951,7 @@ html.aw-high-contrast iframe {
       state.hidden = false;
       safeSave(state);
       applyUI();
+      setTimeout(() => document.getElementById('aw-minimize-btn').focus(), 100);
     });
 
     btnMinimize.addEventListener('click', (e) => {
@@ -958,6 +959,7 @@ html.aw-high-contrast iframe {
       state.minimized = true;
       safeSave(state);
       applyUI();
+      setTimeout(() => floatingBtn.focus(), 100);
     });
 
     btnIncrease.addEventListener('click', () => { state.fontSize = Math.min(28, (state.fontSize || defaults.fontSize) + 2); safeSave(state); applyUI(); });
