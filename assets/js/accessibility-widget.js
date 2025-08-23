@@ -246,6 +246,10 @@
       const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|IMG|VIDEO)$/;
 
       function walk(currentNode) {
+        if (currentNode.nodeType === Node.ELEMENT_NODE && currentNode.closest('#accessibility-widget')) {
+          return;
+        }
+        
         if (!currentNode || currentNode.nodeType === Node.COMMENT_NODE) {
           return;
         }
@@ -1184,14 +1188,14 @@ html.aw-high-contrast iframe {
         console.log('[AW] Cor final detectada:', btnPrimary);
 
         const luminance = getColorLuminance(btnPrimary);
-        const isLight = luminance > 0.5;
+        const isLight = luminance > 0.5;
         const iconColor = isLight ? '#000' : '#fff';
 
-        if (highlighter) {
+        if (highlighter) {
           if (isLight) {
             highlighter.style.setProperty('--aw-highlighter-bg', 'rgba(0, 0, 0, 0.18)');
-            highlighter.style.setProperty('--aw-highlighter-border', '#000000');
-            highlighter.style.setProperty('--aw-highlighter-shadow', 'rgba(0, 0, 0, 0.3)');
+            highlighter.style.setProperty('--aw-highlighter-border', '#000000');
+            highlighter.style.setProperty('--aw-highlighter-shadow', 'rgba(0, 0, 0, 0.3)');
           } else {
             const tempDiv = document.createElement('div');
             tempDiv.style.color = btnPrimary;
