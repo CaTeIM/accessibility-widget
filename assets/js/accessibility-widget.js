@@ -1197,12 +1197,13 @@ html.aw-high-contrast iframe {
 
         document.querySelectorAll('#accessibility-widget .aw-mini-btn').forEach(b => {
           b.style.background = btnPrimary;
-          const svg = b.querySelector('svg');
-          if (svg) {
-            svg.style.fill = iconColor;
-          }
-        });
-        
+          const svgs = b.querySelectorAll('svg');
+          svgs.forEach(svg => {
+            if (svg) {
+              svg.style.fill = iconColor;
+            }
+          });
+
         document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => {
           b.style.background = btnPrimary;
           b.style.color = iconColor;
