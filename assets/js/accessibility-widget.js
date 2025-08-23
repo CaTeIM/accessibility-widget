@@ -320,7 +320,31 @@
         }
         // Fallback para o body
         return nodeToText(document.body) || [];
-      } catch (e) { console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || []; }
+      } catch (e) {
+        console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || [];
+      }
+    }
+
+    // -------------------------
+    // Get Color Luminance
+    // -------------------------
+    function getColorLuminance(color) {
+      if (!color) return 0;
+      try {
+          const tempDiv = document.createElement('div');
+          tempDiv.style.color = color;
+          document.body.appendChild(tempDiv);
+          const rgbColor = window.getComputedStyle(tempDiv).color;
+          document.body.removeChild(tempDiv);
+
+          const rgb = rgbColor.match(/\d+/g).map(Number);
+          const [r, g, b] = rgb;
+
+          const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+          return luminance;
+      } catch (e) {
+          return 0;
+      }
     }
 
     // -------------------------
@@ -334,8 +358,8 @@
 #aw-highlighter { position: absolute; z-index: 2147483640; background-color: rgba(143, 188, 187, 0.25); border: 2px solid var(--primary-accent, #8FBCBB); border-radius: 8px; box-shadow: 0 0 15px rgba(143, 188, 187, 0.5); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
 #aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
 
-#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: #ffffff; }
-#aw-floating-btn img { width: 35px; height: 35px; }
+#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: var(--btn-primary-bg,#4b7bec); }
+#aw-floating-btn img { width: 35px; height: 35px; filter: invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%); }
 
 /* Estilos para o Miniplayer Flutuante */
 .aw-miniplayer { position: absolute; right: 68px; bottom: 0; height: 50px; display: none; align-items: center; gap: 8px; background: var(--card-bg, linear-gradient(145deg,#2f3542,#343a4a)); padding: 0 12px 0 8px; border-radius: 25px; box-shadow: 0 6px 18px rgba(0,0,0,.25); color: var(--panel-text, #e6eef8); animation: fadeInMiniplayer 0.3s ease; }
@@ -718,7 +742,9 @@ html.aw-high-contrast iframe {
           const match = voices.findIndex(v => (v.lang || '').toLowerCase().startsWith(eff));
           selectVoice.value = match >= 0 ? match : -1;
         }
-      } catch (e) { console.warn('populateVoices', e); }
+      } catch (e) {
+        console.warn('populateVoices', e);
+      }
     }
     if (synth) {
       populateVoices();
@@ -789,7 +815,9 @@ html.aw-high-contrast iframe {
         if ((isPlaying || isPaused) && lastReadMode === 'selection') btnReadSelection.classList.add('aw-toggle-active'); else btnReadSelection.classList.remove('aw-toggle-active');
 
         updateChunkIndicator();
-      } catch (e) { console.warn('updatePlayerUI', e); }
+      } catch (e) {
+        console.warn('updatePlayerUI', e);
+      }
     }
 
     function speakChunksSequentially(chunks, startIndex = 0) {
@@ -834,7 +862,11 @@ html.aw-high-contrast iframe {
               if (isPaused) return;
               const nextIdx = u._idx + 1;
               if (nextIdx < utterQueue.length) {
-                try { synth.speak(utterQueue[nextIdx]); } catch (e) { console.warn(e); }
+                try {
+                  synth.speak(utterQueue[nextIdx]);
+                } catch (e) {
+                  console.warn(e);
+                }
               } else {
                 isPlaying = false;
                 removeHighlight();
@@ -843,7 +875,9 @@ html.aw-high-contrast iframe {
             }, delay);
           }
         };
-        u.onerror = function (e) { console.warn('utterance error', e); };
+        u.onerror = function (e) {
+          console.warn('utterance error', e);
+        };
 
         utterQueue.push(u);
       }
@@ -896,7 +930,9 @@ html.aw-high-contrast iframe {
           synth.pause();
           updatePlayerUI();
         }
-      } catch (err) { console.warn('pauseResume error', err); }
+      } catch (err) {
+        console.warn('pauseResume error', err);
+      }
     }
 
     function readPage(fromIndex = 0) {
@@ -1016,7 +1052,9 @@ html.aw-high-contrast iframe {
           document.body.classList.remove('aw-disable-animations');
           root.classList.remove('aw-disable-animations');
         }
-      } catch (e) { console.warn(e); }
+      } catch (e) {
+        console.warn(e);
+      }
     }
 
     btnContrast.addEventListener('click', (e) => {
@@ -1066,7 +1104,6 @@ html.aw-high-contrast iframe {
     btnRead.addEventListener('click', (e) => { e.stopPropagation(); readPage(0); });
     btnReadSelection.addEventListener('click', (e) => { e.stopPropagation(); readSelection(0); });
 
-    // Eventos dos botões do Miniplayer
     btnMiniPrev.addEventListener('click', (e) => { e.stopPropagation(); prevChunk(); });
     btnMiniNext.addEventListener('click', (e) => { e.stopPropagation(); nextChunk(); });
     btnMiniPlay.addEventListener('click', (e) => { e.stopPropagation(); pauseResume(); });
@@ -1076,7 +1113,7 @@ html.aw-high-contrast iframe {
         e.preventDefault();
         state.minimized = !state.minimized;
         if (!state.minimized) {
-            state.hidden = false; // Important: Make sure widget is visible when opening with shortcut
+            state.hidden = false;
         }
         safeSave(state);
         applyUI();
@@ -1119,49 +1156,61 @@ html.aw-high-contrast iframe {
       try {
         const cs = getComputedStyle(document.documentElement);
         const btnPrimary = cs.getPropertyValue('--btn-primary-bg').trim();
+  
         if (btnPrimary) {
-          document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => b.style.background = btnPrimary);
           floatingBtn.style.background = btnPrimary;
+          document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => b.style.background = btnPrimary);
+  
+          const iconImg = floatingBtn.querySelector('img');
+          if (!iconImg) return;
+  
+          const luminance = getColorLuminance(btnPrimary);
+  
+          if (luminance > 0.75) {
+            iconImg.style.filter = 'none';
+          } else {
+            iconImg.style.filter = 'invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%)';
+          }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('applyComputedTheme error', e);
+      }
     }
 
     function applyUI() {
       try {
-        // 1. Visibilidade global
         if (state.hidden) {
           root.classList.add('aw-hidden');
           return;
         } else {
           root.classList.remove('aw-hidden');
         }
-
+  
         const isMinimized = state.minimized;
-
+  
         floatingBtn.setAttribute('aria-expanded', !isMinimized);
         panel.setAttribute('aria-hidden', isMinimized);
-
-        // 2. Lógica de Minimizar / Miniplayer
+  
         if (isMinimized) {
           root.classList.add('aw-minimized');
-          // Se a leitura estiver ativa, mostre o miniplayer
           if (isPlaying || isPaused) {
             root.classList.add('aw-miniplayer-visible');
           } else {
             root.classList.remove('aw-miniplayer-visible');
           }
         } else {
-          // Se o painel estiver aberto, esconda o miniplayer e o botão flutuante
           root.classList.remove('aw-minimized');
           root.classList.remove('aw-miniplayer-visible');
         }
-
+  
         document.documentElement.style.fontSize = (state.fontSize || defaults.fontSize) + 'px';
         spanFontSize && (spanFontSize.textContent = (state.fontSize || defaults.fontSize) + 'px');
-
+  
         updateControlButtonsUI();
         updatePlayerUI();
-      } catch (e) { console.warn('AccessibilityWidget.applyUI error', e); }
+      } catch (e) {
+        console.warn('AccessibilityWidget.applyUI error', e);
+      }
     }
 
     function attachRangeFillHandlers() {
