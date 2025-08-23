@@ -334,7 +334,7 @@
 #aw-highlighter { position: absolute; z-index: 2147483640; background-color: rgba(143, 188, 187, 0.25); border: 2px solid var(--primary-accent, #8FBCBB); border-radius: 8px; box-shadow: 0 0 15px rgba(143, 188, 187, 0.5); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
 #aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
 
-#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: ffffff; }
+#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: #ffffff; }
 #aw-floating-btn img { width: 35px; height: 35px; }
 
 /* Estilos para o Miniplayer Flutuante */
