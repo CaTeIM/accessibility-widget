@@ -1203,6 +1203,11 @@ html.aw-high-contrast iframe {
           }
         });
         
+        document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => {
+          b.style.background = btnPrimary;
+          b.style.color = iconColor;
+        });
+        
         root.style.setProperty('--btn-primary-bg', btnPrimary);
         root.style.setProperty('--aw-thumb-border-color', isLight ? '#000' : btnPrimary);
       } catch (e) {
