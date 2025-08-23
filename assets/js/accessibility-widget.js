@@ -1182,6 +1182,9 @@ html.aw-high-contrast iframe {
         }
 
         console.log('[AW] Cor final detectada:', btnPrimary);
+
+        const luminance = getColorLuminance(btnPrimary);
+        const isLight = luminance > 0.5;
         const iconColor = isLight ? '#000' : '#fff';
 
         if (highlighter) {
