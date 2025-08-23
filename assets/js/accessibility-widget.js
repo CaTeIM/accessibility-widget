@@ -646,8 +646,8 @@ html.aw-high-contrast iframe {
     function removeHighlight() {
       if (highlighter) {
         highlighter.classList.remove('aw-visible');
-        // Reseta a posição após a transição para não ficar "flutuando" invisível
-        setTimeout(() => {
+        if (highlightResetTimer) clearTimeout(highlightResetTimer);
+        highlightResetTimer = setTimeout(() => {
           highlighter.style.width = '0px';
           highlighter.style.height = '0px';
           highlighter.style.top = '0px';
@@ -657,6 +657,11 @@ html.aw-high-contrast iframe {
     }
 
     function highlightSpokenText(elements) {
+      if (highlightResetTimer) {
+        clearTimeout(highlightResetTimer);
+        highlightResetTimer = null;
+      }
+      
       if (!elements || !elements.length || lastReadMode === 'selection') {
         removeHighlight();
         return;
@@ -730,6 +735,7 @@ html.aw-high-contrast iframe {
     let isPaused = false;
     let pendingNextIndex = null;
     let navigatedWhilePaused = false;
+    let highlightResetTimer = null;
     let lastChunks = [];
     let isPlaying = false;
     let lastReadMode = null;
