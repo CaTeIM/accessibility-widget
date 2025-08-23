@@ -361,6 +361,11 @@
 /* Helper class for visibility toggling */
 .aw-hidden { display: none !important; }
 
+#accessibility-widget .aw-btn-secondary { background: rgba(255,255,255,0.06); color: var(--small-text,#d8e6f5); border: 1px solid rgba(255,255,255,0.08); transition: all 0.2s ease; }
+#accessibility-widget .aw-btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.12); }
+#aw-reread { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.aw-reread-icon { width: 16px; height: 16px; flex-shrink: 0; }
+
 /* Estilos para o Marcador de Leitura Visual */
 #aw-highlighter { position: absolute; z-index: 2147483640; background-color: var(--aw-highlighter-bg, rgba(0,0,0,0.2)); border: 2px solid var(--aw-highlighter-border, #000); border-radius: 8px; box-shadow: 0 0 15px var(--aw-highlighter-shadow, rgba(0,0,0,0.3)); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
 #aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
@@ -628,6 +633,13 @@ html.aw-high-contrast iframe {
           <button id="aw-read-selection" class="aw-btn-primary aw-full" style="flex:1; background: rgba(255,255,255,0.04); color:inherit;">Ler seleção</button>
         </div>
 
+        <button id="aw-reread" class="aw-btn-secondary aw-full aw-hidden" style="width:100%; margin-top:8px;">
+          <svg class="aw-reread-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"></path>
+          </svg>
+          <span>Atualizar</span>
+        </button>
+
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
           <div class="aw-small">Fonte: <span id="aw-font-size">${state.fontSize}px</span></div>
           <div class="aw-small">v1.8</div>
@@ -670,6 +682,7 @@ html.aw-high-contrast iframe {
     const chunkIndicator = document.getElementById('aw-chunk-indicator');
     const chunkText = document.getElementById('aw-chunk-text');
     const chunkFill = document.getElementById('aw-chunk-fill');
+    const btnReread = document.getElementById('aw-reread');
 
     // -------------------------
     // Lógica do Marcador Visual
@@ -773,6 +786,8 @@ html.aw-high-contrast iframe {
     let isPlaying = false;
     let lastReadMode = null;
     let currentUtterIdx = -1;
+    let contentObserver = null;
+    let hasNewContent = false;
 
     function updateChunkIndicator() {
       try {
@@ -810,16 +825,36 @@ html.aw-high-contrast iframe {
           btnPlay.title = getUiString('play');
           btnPlay.setAttribute('aria-label', getUiString('play'));
         }
+
         if (!lastChunks || !lastChunks.length) {
           btnPrev.setAttribute('disabled','disabled'); btnNext.setAttribute('disabled','disabled'); btnStop.setAttribute('disabled','disabled');
         } else {
           btnPrev.removeAttribute('disabled'); btnNext.removeAttribute('disabled'); btnStop.removeAttribute('disabled');
         }
 
-        if (isPlaying || isPaused) root.classList.add('aw-player-active'); else root.classList.remove('aw-player-active');
+        if (isPlaying || isPaused) {
+          root.classList.add('aw-player-active');
+        } else {
+          root.classList.remove('aw-player-active');
+        }
 
-        if ((isPlaying || isPaused) && lastReadMode === 'page') btnRead.classList.add('aw-toggle-active'); else btnRead.classList.remove('aw-toggle-active');
-        if ((isPlaying || isPaused) && lastReadMode === 'selection') btnReadSelection.classList.add('aw-toggle-active'); else btnReadSelection.classList.remove('aw-toggle-active');
+        if ((isPlaying || isPaused) && lastReadMode === 'page') {
+          btnRead.classList.add('aw-toggle-active');
+        } else {
+          btnRead.classList.remove('aw-toggle-active');
+        }
+        
+        if ((isPlaying || isPaused) && lastReadMode === 'selection') {
+          btnReadSelection.classList.add('aw-toggle-active');
+        } else {
+          btnReadSelection.classList.remove('aw-toggle-active');
+        }
+        
+        if (hasNewContent && isPlaying) {
+          btnReread.classList.remove('aw-hidden');
+        } else {
+          btnReread.classList.add('aw-hidden');
+        }
 
         updateChunkIndicator();
       } catch (e) {
@@ -902,6 +937,7 @@ html.aw-high-contrast iframe {
 
     function stopReading() {
       removeHighlight();
+      stopContentObserver();
       try { if (synth) synth.cancel(); } catch (e) {}
       utterQueue = [];
       isPaused = false;
@@ -948,13 +984,21 @@ html.aw-high-contrast iframe {
         safeSave(state);
         applyUI();
       }
+
+      hasNewContent = false;
+      updatePlayerUI();
+      startContentObserver();
+
       try {
         const mappedText = getReadableText();
         if (!mappedText || mappedText.length < 1) { alert(getUiString('no_text')); return; }
         const chunks = splitToChunks(mappedText, 220);
         lastReadMode = 'page';
         speakChunksSequentially(chunks, fromIndex || 0);
-      } catch (e) { console.error('readPage error', e); alert(getUiString('error_start')); }
+      } catch (e) {
+        console.error('readPage error', e);
+        alert(getUiString('error_start'));
+      }
     }
 
     function readSelection(fromIndex = 0) {
@@ -963,6 +1007,7 @@ html.aw-high-contrast iframe {
         safeSave(state);
         applyUI();
       }
+
       try {
         const selText = window.getSelection().toString().trim();
         if (selText && selText.length > 2) {
@@ -970,8 +1015,12 @@ html.aw-high-contrast iframe {
           const chunks = splitToChunks(mappedText, 220);
           lastReadMode = 'selection';
           speakChunksSequentially(chunks, fromIndex || 0);
-        } else alert(getUiString('select_text'));
-      } catch (e) { console.error('readSelection error', e); }
+        } else {
+          alert(getUiString('select_text'));
+        }
+      } catch (e) {
+        console.error('readSelection error', e);
+      }
     }
 
     function speakChunkAtIndex(index) {
@@ -1003,6 +1052,44 @@ html.aw-high-contrast iframe {
       const currentIndex = currentUtterIdx !== -1 ? currentUtterIdx : globalCurrentIndex;
       const prevIdx = Math.max(0, currentIndex - 1);
       speakChunkAtIndex(prevIdx);
+    }
+
+    function handleContentMutation(mutationsList) {
+      for (const mutation of mutationsList) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          const hasExternalNodes = Array.from(mutation.addedNodes).some(node => {
+            return node.nodeType === Node.ELEMENT_NODE && !node.closest('#accessibility-widget');
+          });
+
+          if (hasExternalNodes && !hasNewContent) {
+            console.log('[AW] 🔎 Novo conteúdo detectado na página!');
+            hasNewContent = true;
+            updatePlayerUI();
+            contentObserver.disconnect();
+          }
+        }
+      }
+    }
+
+    function startContentObserver() {
+      if (contentObserver) {
+        contentObserver.disconnect();
+      }
+
+      const targetNode = document.body;
+      const config = { childList: true, subtree: true };
+
+      contentObserver = new MutationObserver(handleContentMutation);
+      contentObserver.observe(targetNode, config);
+      console.log('[AW] 👀 Observador de conteúdo ATIVADO.');
+    }
+  
+    function stopContentObserver() {
+      if (contentObserver) {
+        contentObserver.disconnect();
+        contentObserver = null;
+        console.log('[AW] 🛑 Observador de conteúdo DESATIVADO.');
+      }
     }
 
     // -------------------------
@@ -1114,6 +1201,7 @@ html.aw-high-contrast iframe {
     btnMiniPrev.addEventListener('click', (e) => { e.stopPropagation(); prevChunk(); });
     btnMiniNext.addEventListener('click', (e) => { e.stopPropagation(); nextChunk(); });
     btnMiniPlay.addEventListener('click', (e) => { e.stopPropagation(); pauseResume(); });
+    btnReread.addEventListener('click', (e) => { e.stopPropagation(); console.log('[AW] 🔄 Relendo a página com o novo conteúdo...'); readPage(0); });
 
     document.addEventListener('keydown', function (e) {
       if (e.altKey && !e.shiftKey && !e.ctrlKey && (e.key === 'm' || e.key === 'M')) {
@@ -1160,13 +1248,11 @@ html.aw-high-contrast iframe {
     }
 
     function applyComputedTheme() {
-      console.log('[AW] 🕵️ Rodando applyComputedTheme...');
       try {
         const cs = getComputedStyle(document.documentElement);
         let btnPrimary = cs.getPropertyValue('--btn-primary-bg').trim();
 
         if (!btnPrimary) {
-          console.log("[AW] Variável não encontrada. Detectando cor do fundo...");
           const bodyBg = window.getComputedStyle(document.body).backgroundColor;
           const isColorValid = (c) => c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent';
 
@@ -1181,11 +1267,8 @@ html.aw-high-contrast iframe {
         }
 
         if (!btnPrimary) {
-          console.log("[AW] Nenhuma cor detectável. Usando CSS padrão.");
           return;
         }
-
-        console.log('[AW] Cor final detectada:', btnPrimary);
 
         const luminance = getColorLuminance(btnPrimary);
         const isLight = luminance > 0.5;
@@ -1244,8 +1327,7 @@ html.aw-high-contrast iframe {
         root.style.setProperty('--btn-primary-bg', btnPrimary);
         root.style.setProperty('--aw-thumb-border-color', isLight ? '#000' : btnPrimary);
       } catch (e) {
-        // console.warn('applyComputedTheme error', e);
-        console.error('[AW] ERRO CRÍTICO dentro de applyComputedTheme:', e);
+        console.warn('applyComputedTheme error', e);
       }
     }
 
