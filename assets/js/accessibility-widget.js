@@ -334,8 +334,8 @@
 #aw-highlighter { position: absolute; z-index: 2147483640; background-color: rgba(143, 188, 187, 0.25); border: 2px solid var(--primary-accent, #8FBCBB); border-radius: 8px; box-shadow: 0 0 15px rgba(143, 188, 187, 0.5); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
 #aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
 
-#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: var(--btn-primary-bg,#4b7bec); }
-#aw-floating-btn img { width: 35px; height: 35px; filter: invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%); }
+#aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: ffffff; }
+#aw-floating-btn img { width: 35px; height: 35px; }
 
 /* Estilos para o Miniplayer Flutuante */
 .aw-miniplayer { position: absolute; right: 68px; bottom: 0; height: 50px; display: none; align-items: center; gap: 8px; background: var(--card-bg, linear-gradient(145deg,#2f3542,#343a4a)); padding: 0 12px 0 8px; border-radius: 25px; box-shadow: 0 6px 18px rgba(0,0,0,.25); color: var(--panel-text, #e6eef8); animation: fadeInMiniplayer 0.3s ease; }
