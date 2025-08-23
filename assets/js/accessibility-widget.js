@@ -368,7 +368,7 @@
 #accessibility-widget.aw-miniplayer-visible .aw-miniplayer { display: flex; }
 #accessibility-widget .aw-mini-btn:hover { background: var(--btn-primary-hover-bg, #5E81AC); }
 #accessibility-widget .aw-mini-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--btn-primary-bg, #4b7bec); color: #fff; border: none; display: flex; align-items: center; justify-content: center; padding: 0; transition: background-color 0.2s ease; }
-#accessibility-widget .aw-mini-btn svg { fill: #fff !important; }
+#accessibility-widget .aw-mini-btn svg { fill: #fff }
 .aw-miniplayer-controls { display: flex; align-items: center; gap: 4px; }
 .aw-mini-btn svg { width: 18px; height: 18px; }
 .aw-miniplayer-chunk { font-size: 13px; color: var(--small-text,#d8e6f5); white-space: nowrap; }
@@ -447,10 +447,10 @@
   background: linear-gradient(90deg, var(--btn-primary-bg, #4b7bec) 0%, var(--btn-primary-bg, #4b7bec) var(--aw-range-fill, 40%), rgba(255,255,255,0.06) var(--aw-range-fill, 40%));
   outline: none; padding: 0; margin: 0; box-shadow: inset 0 1px 2px rgba(0,0,0,0.12);
 }
-#accessibility-widget input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--btn-primary-bg, #4b7bec); box-shadow: 0 2px 6px rgba(0,0,0,0.25); cursor: pointer; }
+#accessibility-widget input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--aw-thumb-border-color, #4b7bec); box-shadow: 0 2px 6px rgba(0,0,0,0.25); cursor: pointer; }
 #accessibility-widget input[type="range"]::-moz-range-track { background: rgba(255,255,255,0.06); height: 10px; border-radius: 999px; }
 #accessibility-widget input[type="range"]::-moz-range-progress { background: var(--btn-primary-bg, #4b7bec); height: 10px; border-radius: 999px; }
-#accessibility-widget input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--btn-primary-bg, #4b7bec); cursor:pointer; }
+#accessibility-widget input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--aw-thumb-border-color, #4b7bec); cursor:pointer; }
 
 html.aw-high-contrast #accessibility-widget .aw-panel,
 body.aw-high-contrast #accessibility-widget .aw-panel,
@@ -1156,48 +1156,55 @@ html.aw-high-contrast iframe {
       console.log('[AW] 🕵️ Rodando applyComputedTheme...');
       try {
         const cs = getComputedStyle(document.documentElement);
-        let btnPrimary = cs.getPropertyValue('--btn-primary-bg').trim(); // Usamos 'let' para poder modificar
-        
-        if (!btnPrimary) {
-          console.log("[AW] Variável --btn-primary-bg não encontrada. Tentando detectar a cor do fundo da página...");
-          const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+        let btnPrimary = cs.getPropertyValue('--btn-primary-bg').trim();
 
+        if (!btnPrimary) {
+          console.log("[AW] Variável não encontrada. Detectando cor do fundo...");
+          const bodyBg = window.getComputedStyle(document.body).backgroundColor;
           const isColorValid = (c) => c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent';
 
+          
           if (isColorValid(bodyBg)) {
             btnPrimary = bodyBg;
           } else {
-            console.log("[AW] Fundo do Body é transparente. Verificando o HTML...");
             const htmlBg = window.getComputedStyle(document.documentElement).backgroundColor;
             if (isColorValid(htmlBg)) {
               btnPrimary = htmlBg;
             }
           }
         }
-        
+
         if (!btnPrimary) {
-          console.log("[AW] Nenhuma cor de fundo detectável encontrada. Usando CSS padrão.");
+          console.log("[AW] Nenhuma cor detectável. Usando CSS padrão.");
           return;
         }
 
-        console.log('[AW] Cor final detectada para o botão:', btnPrimary);
-        
-        floatingBtn.style.background = btnPrimary;
-        document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => b.style.background = btnPrimary);
-
-        const iconImg = floatingBtn.querySelector('img');
-        if (!iconImg) return;
-
+        console.log('[AW] Cor final detectada:', btnPrimary);
         const luminance = getColorLuminance(btnPrimary);
         console.log('[AW] Luminância calculada:', luminance);
 
-        if (luminance > 0.5) {
-          console.log('[AW] DECISÃO: Fundo claro. Forçando ícone PRETO.');
-          iconImg.style.setProperty('filter', 'brightness(0) saturate(100%)', 'important');
-        } else {
-          console.log('[AW] DECISÃO: Fundo escuro. Forçando ícone BRANCO.');
-          iconImg.style.setProperty('filter', 'brightness(0) saturate(100%) invert(1)', 'important');
+        const isLight = luminance > 0.5;
+        const iconColor = isLight ? '#000' : '#fff';
+        
+        const iconImg = floatingBtn.querySelector('img');
+        if (iconImg) {
+          const iconFilter = isLight ? 'brightness(0) saturate(100%)' : 'brightness(0) saturate(100%) invert(1)';
+          iconImg.style.setProperty('filter', iconFilter, 'important');
         }
+
+        btnMinimize.style.background = btnPrimary;
+        btnMinimize.style.color = iconColor;
+
+        document.querySelectorAll('#accessibility-widget .aw-mini-btn').forEach(b => {
+          b.style.background = btnPrimary;
+          const svg = b.querySelector('svg');
+          if (svg) {
+            svg.style.fill = iconColor;
+          }
+        });
+        
+        root.style.setProperty('--btn-primary-bg', btnPrimary);
+        root.style.setProperty('--aw-thumb-border-color', isLight ? '#000' : btnPrimary);
       } catch (e) {
         // console.warn('applyComputedTheme error', e);
         console.error('[AW] ERRO CRÍTICO dentro de applyComputedTheme:', e);
