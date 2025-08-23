@@ -1153,27 +1153,40 @@ html.aw-high-contrast iframe {
     }
 
     function applyComputedTheme() {
+      console.log('[AW] 🕵️ Rodando applyComputedTheme...');
       try {
         const cs = getComputedStyle(document.documentElement);
         const btnPrimary = cs.getPropertyValue('--btn-primary-bg').trim();
+
+        console.log('[AW] Cor primária detectada:', btnPrimary);
   
         if (btnPrimary) {
           floatingBtn.style.background = btnPrimary;
           document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => b.style.background = btnPrimary);
   
           const iconImg = floatingBtn.querySelector('img');
-          if (!iconImg) return;
-  
+          if (!iconImg) {
+            console.error('[AW] ERRO: Imagem do ícone não encontrada!');
+            return;
+          }
+
           const luminance = getColorLuminance(btnPrimary);
+          console.log('[AW] Luminância calculada:', luminance);
   
           if (luminance > 0.5) {
+            console.log('[AW] DECISÃO: Fundo claro. Forçando ícone PRETO.');
             iconImg.style.setProperty('filter', 'brightness(0) saturate(100%)', 'important');
           } else {
+            console.log('[AW] DECISÃO: Fundo escuro. Forçando ícone BRANCO.');
             iconImg.style.setProperty('filter', 'brightness(0) saturate(100%) invert(1)', 'important');
           }
+          console.log('[AW] Estilo final do filtro aplicado:', iconImg.style.filter);
+        } else {
+          console.log('[AW] Nenhuma cor primária (--btn-primary-bg) encontrada. Usando padrão.');
         }
       } catch (e) {
-        console.warn('applyComputedTheme error', e);
+        // console.warn('applyComputedTheme error', e);
+        console.error('[AW] ERRO CRÍTICO dentro de applyComputedTheme:', e);
       }
     }
 
