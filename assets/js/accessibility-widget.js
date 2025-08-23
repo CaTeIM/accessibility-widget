@@ -1166,7 +1166,7 @@ html.aw-high-contrast iframe {
   
           const luminance = getColorLuminance(btnPrimary);
   
-          if (luminance > 0.75) {
+          if (luminance > 0.7) {
             iconImg.style.filter = 'none';
           } else {
             iconImg.style.filter = 'invert(1) sepia(1) saturate(0) hue-rotate(0deg) brightness(200%)';
