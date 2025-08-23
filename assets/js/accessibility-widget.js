@@ -1203,6 +1203,7 @@ html.aw-high-contrast iframe {
               svg.style.fill = iconColor;
             }
           });
+        });
 
         document.querySelectorAll('#accessibility-widget .aw-player-btn').forEach(b => {
           b.style.background = btnPrimary;
