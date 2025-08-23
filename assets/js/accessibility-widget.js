@@ -1,13 +1,16 @@
-// Accessibility Widget - v1.7 (Visual Highlighter & Miniplayer)
+// Accessibility Widget - v1.8 (Dynamic Theme & Contextual Reader)
 // Author: CaTeIM
-// Last update: 2025-08-22
+// Last update: 2025-08-23
 // Features & Fixes:
-// - NEW: Added a visual highlighter that follows the spoken text on the page.
-// - NEW: Implemented a mini-player when the panel is minimized during playback.
-// - REFACTOR: Overhauled text extraction engine for higher accuracy and precise highlighting.
-// - FIX: Major improvements to play/pause logic and auto-advancing between text chunks.
-// - UI: Replaced player controls with SVG icons & various style improvements.
-// Keep using: localStorage.removeItem('aw_settings_v1'); location.reload();
+// - NEW: Dynamic Theme Engine automatically adapts the widget's appearance to the host site's colors.
+// - NEW: Contextual Reader announces the type of element (e.g., "Button", "Link") before its text.
+// - NEW: Visual highlighter that follows the spoken text on the page.
+// - NEW: Mini-player for playback control when the panel is minimized.
+// - IMPROVEMENT: Advanced text normalization correctly pronounces emails, URLs, and pauses.
+// - IMPROVEMENT: Smarter content detection prioritizes main content areas (<main>, <article>).
+// - REFACTOR: Overhauled text extraction and speech queue for higher accuracy and stability.
+// - UI: SVG icons for player controls and overall style enhancements.
+// For a clean reset: localStorage.removeItem('aw_settings_v1'); location.reload();
 
 (function () {
   if (window.__ACCESSIBILITY_WIDGET_LOADED__) {
@@ -355,7 +358,7 @@
 .aw-hidden { display: none !important; }
 
 /* Estilos para o Marcador de Leitura Visual */
-#aw-highlighter { position: absolute; z-index: 2147483640; background-color: rgba(143, 188, 187, 0.25); border: 2px solid var(--primary-accent, #8FBCBB); border-radius: 8px; box-shadow: 0 0 15px rgba(143, 188, 187, 0.5); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
+#aw-highlighter { position: absolute; z-index: 2147483640; background-color: var(--aw-highlighter-bg, rgba(0,0,0,0.2)); border: 2px solid var(--aw-highlighter-border, #000); border-radius: 8px; box-shadow: 0 0 15px var(--aw-highlighter-shadow, rgba(0,0,0,0.3)); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
 #aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
 
 #aw-floating-btn { width: 50px; height: 50px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); background: var(--btn-primary-bg,#4b7bec); }
@@ -1163,7 +1166,6 @@ html.aw-high-contrast iframe {
           const bodyBg = window.getComputedStyle(document.body).backgroundColor;
           const isColorValid = (c) => c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent';
 
-          
           if (isColorValid(bodyBg)) {
             btnPrimary = bodyBg;
           } else {
@@ -1180,12 +1182,34 @@ html.aw-high-contrast iframe {
         }
 
         console.log('[AW] Cor final detectada:', btnPrimary);
-        const luminance = getColorLuminance(btnPrimary);
-        console.log('[AW] Luminância calculada:', luminance);
-
-        const isLight = luminance > 0.5;
         const iconColor = isLight ? '#000' : '#fff';
-        
+
+        if (highlighter) {
+          if (isLight) {
+            highlighter.style.setProperty('--aw-highlighter-bg', 'rgba(0, 0, 0, 0.18)');
+            highlighter.style.setProperty('--aw-highlighter-border', '#000000');
+            highlighter.style.setProperty('--aw-highlighter-shadow', 'rgba(0, 0, 0, 0.3)');
+          } else {
+            const tempDiv = document.createElement('div');
+            tempDiv.style.color = btnPrimary;
+            document.body.appendChild(tempDiv);
+            const rgbColor = window.getComputedStyle(tempDiv).color;
+            document.body.removeChild(tempDiv);
+
+            const rgbValues = rgbColor.match(/\d+/g);
+            if (rgbValues && rgbValues.length >= 3) {
+              const [r, g, b] = rgbValues;
+              highlighter.style.setProperty('--aw-highlighter-bg', `rgba(${r}, ${g}, ${b}, 0.25)`);
+              highlighter.style.setProperty('--aw-highlighter-shadow', `rgba(${r}, ${g}, ${b}, 0.4)`);
+            } else {
+              highlighter.style.setProperty('--aw-highlighter-bg', 'rgba(255, 255, 255, 0.20)');
+              highlighter.style.setProperty('--aw-highlighter-shadow', 'rgba(255, 255, 255, 0.3)');
+            }
+
+            highlighter.style.setProperty('--aw-highlighter-border', btnPrimary);
+          }
+        }
+
         const iconImg = floatingBtn.querySelector('img');
         if (iconImg) {
           const iconFilter = isLight ? 'brightness(0) saturate(100%)' : 'brightness(0) saturate(100%) invert(1)';
@@ -1209,7 +1233,7 @@ html.aw-high-contrast iframe {
           b.style.background = btnPrimary;
           b.style.color = iconColor;
         });
-        
+
         root.style.setProperty('--btn-primary-bg', btnPrimary);
         root.style.setProperty('--aw-thumb-border-color', isLight ? '#000' : btnPrimary);
       } catch (e) {
