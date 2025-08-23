@@ -1167,9 +1167,9 @@ html.aw-high-contrast iframe {
           const luminance = getColorLuminance(btnPrimary);
   
           if (luminance > 0.5) {
-            iconImg.style.filter = 'brightness(0) saturate(100%)';
+            iconImg.style.setProperty('filter', 'brightness(0) saturate(100%)', 'important');
           } else {
-            iconImg.style.filter = 'brightness(0) saturate(100%) invert(1)';
+            iconImg.style.setProperty('filter', 'brightness(0) saturate(100%) invert(1)', 'important');
           }
         }
       } catch (e) {
