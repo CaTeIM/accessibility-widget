@@ -4,7 +4,7 @@
 
 O Widget de Acessibilidade é um script JavaScript **autocontido e sem dependências externas** (`vanilla JS`), projetado para ser injetado em qualquer página do site. Seu objetivo é adicionar uma camada de acessibilidade com funcionalidades de Leitura de Voz (TTS), ajuste de fonte e modo de alto contraste.
 
-## 2. Instalação
+## 2. Instalação e Configuração 
 
 A instalação do widget requer apenas a inclusão do arquivo JavaScript no HTML da página.
 
@@ -39,6 +39,20 @@ Adicione a seguinte tag `<script>` em suas páginas HTML, preferencialmente logo
 - **`defer`**: O atributo `defer` é **altamente recomendado**. Ele garante que o script do widget seja carregado sem bloquear a renderização do restante da página, melhorando a performance.
 
 Uma vez que o script é adicionado, o widget irá se inicializar automaticamente, sem a necessidade de chamar qualquer função.
+
+### Teste Rápido (Via Console)
+
+Para testar o widget em qualquer site de forma instantânea, sem precisar alterar o código-fonte, siga estes passos:
+
+1.  Abra o console do seu navegador (geralmente com a tecla **F12**).
+2.  Cole o seguinte comando e pressione **Enter**:
+
+```javascript
+let s = document.createElement('script');
+s.src = "https://cateim.github.io/accessibility-widget/assets/js/accessibility-widget.js";
+s.onload = () => console.log("✅ Widget carregado!");
+document.body.appendChild(s);
+```
 
 ## 3. Como Funciona
 

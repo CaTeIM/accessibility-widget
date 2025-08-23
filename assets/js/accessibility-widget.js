@@ -630,7 +630,7 @@ html.aw-high-contrast iframe {
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
           <div class="aw-small">Fonte: <span id="aw-font-size">${state.fontSize}px</span></div>
-          <div class="aw-small">v1.7</div>
+          <div class="aw-small">v1.8</div>
         </div>
       </div>
     `;
