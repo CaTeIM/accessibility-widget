@@ -271,9 +271,12 @@
             if (!/[.!?…]$/.test(spoken)) spoken += '.';
             mappedText.push({ text: spoken, element: currentNode });
           } else if (currentNode.nodeType === Node.TEXT_NODE) {
-            const text = (currentNode.nodeValue || '').trim();
-            if (text) {
-              mappedText.push({ text: text, element: currentNode.parentElement });
+            const parentTag = (currentNode.parentElement.tagName || '').toUpperCase();
+            if (!interactiveTags.test(parentTag) && !currentNode.parentElement.hasAttribute('role')) {
+              const text = (currentNode.nodeValue || '').trim();
+              if (text) {
+                mappedText.push({ text: text, element: currentNode.parentElement });
+              }
             }
           } else if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
             if (mappedText.length > 0 && mappedText[mappedText.length - 1].text !== '.') {
