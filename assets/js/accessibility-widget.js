@@ -240,77 +240,77 @@
   // -------------------------
   // Node -> text extractor (with interactive prefixes)
   // -------------------------
-  function nodeToText(node) {
-    const mappedText = [];
-    const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
-    const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|IMG|VIDEO)$/;
-
-    function walk(currentNode) {
-      if (currentNode.nodeType === Node.ELEMENT_NODE && currentNode.closest('#accessibility-widget')) {
-        return;
-      }
-      
-      if (!currentNode || currentNode.nodeType === Node.COMMENT_NODE) {
-        return;
-      }
-
-      const tag = (currentNode.tagName || '').toUpperCase();
-      if (currentNode.nodeType === Node.ELEMENT_NODE && ignoreTags.test(tag)) {
-          return;
-      }
-
+  function nodeToTextAsync(node) {
+    return new Promise(resolve => {
+      const mappedText = [];
+      const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
+      const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|VIDEO)$/;
       const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/;
-      if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
-        let label = '';
-        try {
-          label = currentNode.getAttribute('aria-label') || currentNode.getAttribute('title') || currentNode.getAttribute('placeholder') || currentNode.value || (currentNode.innerText || currentNode.textContent).trim();
-        } catch (e) {}
-        const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
-        let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
-        if (!/[.!?…]$/.test(spoken)) spoken += '.';
-        mappedText.push({ text: spoken, element: currentNode });
-        return;
-      }
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_ALL, null, false);
+      let currentNode = walker.nextNode();
+      let nodesProcessed = 0;
 
-      if (currentNode.nodeType === Node.TEXT_NODE) {
-        const text = (currentNode.nodeValue || '').trim();
-        if (text) {
-          mappedText.push({ text: text, element: currentNode.parentElement });
-        }
-      }
-
-      for (let i = 0; i < currentNode.childNodes.length; i++) {
-        walk(currentNode.childNodes[i]);
-      }
-
-      if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
-        if (mappedText.length > 0) {
-          const lastEntry = mappedText[mappedText.length - 1];
-          if (lastEntry.text !== '.') {
-            mappedText.push({ text: '.', element: currentNode });
+      function processChunk() {
+        while (currentNode && nodesProcessed < 100) { // Processa 100 nós por vez
+          if (currentNode.nodeType === Node.ELEMENT_NODE && currentNode.closest('#accessibility-widget')) {
+            currentNode = walker.nextNode();
+            continue;
           }
+
+          const tag = (currentNode.tagName || '').toUpperCase();
+          if (currentNode.nodeType === Node.ELEMENT_NODE && ignoreTags.test(tag)) {
+            currentNode = walker.nextNode();
+            continue;
+          }
+
+          if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
+            let label = '';
+            try { label = currentNode.getAttribute('aria-label') || currentNode.getAttribute('title') || currentNode.getAttribute('placeholder') || currentNode.value || (currentNode.innerText || currentNode.textContent).trim(); } catch (e) {}
+            const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
+            let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
+            if (!/[.!?…]$/.test(spoken)) spoken += '.';
+            mappedText.push({ text: spoken, element: currentNode });
+          } else if (currentNode.nodeType === Node.TEXT_NODE) {
+            const text = (currentNode.nodeValue || '').trim();
+            if (text) {
+              mappedText.push({ text: text, element: currentNode.parentElement });
+            }
+          } else if (currentNode.nodeType === Node.ELEMENT_NODE && blockTags.test(tag)) {
+            if (mappedText.length > 0 && mappedText[mappedText.length - 1].text !== '.') {
+              mappedText.push({ text: '.', element: currentNode });
+            }
+          }
+
+          nodesProcessed++;
+          currentNode = walker.nextNode();
+        }
+
+        if (currentNode) {
+          nodesProcessed = 0;
+          requestAnimationFrame(processChunk);
+        } else {
+          resolve(mappedText);
         }
       }
-    }
 
-    walk(node);
-    return mappedText;
+      processChunk();
+    });
   }
 
   // -------------------------
   // getReadableText - aggregates header + main or body
   // -------------------------
-  function getReadableText() {
+  async function getReadableTextAsync() {
     try {
       const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
       let headerMap = [];
       for (let sel of headerCandidates) {
         const h = document.querySelector(sel);
         if (h) {
-          const map = nodeToText(h);
+          const map = await nodeToTextAsync(h);
           if (map.length > 2) {
-              headerMap = map;
-              break;
+            headerMap = map;
+            break;
           }
         }
       }
@@ -319,16 +319,16 @@
       for (let s of selectors) {
         const el = document.querySelector(s);
         if (el) {
-          const mainMap = nodeToText(el);
+          const mainMap = await nodeToTextAsync(el);
           if (mainMap.length > 5) {
             return headerMap.concat(mainMap);
           }
         }
       }
-      // Fallback para o body
-      return nodeToText(document.body) || [];
+      return await nodeToTextAsync(document.body) || [];
     } catch (e) {
-      console.warn('AccessibilityWidget.getReadableText error', e); return nodeToText(document.body) || [];
+      console.warn('AccessibilityWidget.getReadableTextAsync error', e);
+      return await nodeToTextAsync(document.body) || [];
     }
   }
 
@@ -360,12 +360,24 @@
   const css = `
   /* Helper class for visibility toggling */
   .aw-hidden { display: none !important; }
-  
+
+  /* Estilo para o botão de Atualizar Conteúdo */
   #accessibility-widget .aw-btn-secondary { background: rgba(255,255,255,0.06); color: var(--small-text,#d8e6f5); border: 1px solid rgba(255,255,255,0.08); transition: all 0.2s ease; }
   #accessibility-widget .aw-btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.12); }
   #aw-reread { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
   .aw-reread-icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+  /* Estilos para o Spinner e Estado de Carregamento do Botão */
+  .aw-spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: aw-spin 0.8s linear infinite; }
   
+  @keyframes aw-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Lógica para mostrar/esconder texto e spinner */
+  .aw-btn-loading .aw-spinner { display: block !important; }
+  .aw-btn-loading .aw-btn-text { display: none !important; }
+
   /* Estilos para o Marcador de Leitura Visual */
   #aw-highlighter { position: absolute; z-index: 2147483640; background-color: var(--aw-highlighter-bg, rgba(0,0,0,0.2)); border: 2px solid var(--aw-highlighter-border, #000); border-radius: 8px; box-shadow: 0 0 15px var(--aw-highlighter-shadow, rgba(0,0,0,0.3)); pointer-events: none; transition: all 0.25s ease-in-out; opacity: 0; visibility: hidden; }
   #aw-highlighter.aw-visible { opacity: 1; visibility: visible; }
@@ -634,10 +646,15 @@
       </div>
 
       <div class="aw-bottom-actions">
-        <button id="aw-read" class="aw-btn-primary aw-full" style="flex:1;">Ler tudo</button>
-        <button id="aw-read-selection" class="aw-btn-primary aw-full" style="flex:1; background: rgba(255,255,255,0.04); color:inherit;">Ler seleção</button>
+        <button id="aw-read" class="aw-btn-primary aw-full" style="flex:1;">
+          <span class="aw-btn-text">Ler tudo</span>
+          <div class="aw-spinner aw-hidden"></div>
+        </button>
+        <button id="aw-read-selection" class="aw-btn-primary aw-full" style="flex:1; background: rgba(255,255,255,0.04); color:inherit;">
+          <span class="aw-btn-text">Ler seleção</span>
+          <div class="aw-spinner aw-hidden"></div>
+        </button>
       </div>
-
       <button id="aw-reread" class="aw-btn-secondary aw-full aw-hidden" style="width:100%; margin-top:8px;">
         <svg class="aw-reread-icon" viewBox="0 0 24 24" fill="currentColor">
           <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"></path>
@@ -817,6 +834,17 @@
     } catch (e) { /* noop */ }
   }
 
+  function setButtonLoading(button, isLoading) {
+    if (!button) return;
+    if (isLoading) {
+      button.classList.add('aw-btn-loading');
+      button.setAttribute('disabled', 'disabled');
+    } else {
+      button.classList.remove('aw-btn-loading');
+      button.removeAttribute('disabled');
+    }
+  }
+
   function updatePlayerUI() {
     try {
       if (isPlaying && !isPaused) {
@@ -983,35 +1011,41 @@
     }
   }
 
-  function readPage(fromIndex = 0) {
+  async function readPage(fromIndex = 0) {
     if (state.minimized) {
       state.minimized = false;
       safeSave(state);
       applyUI();
     }
-
+    setButtonLoading(btnRead, true);
     hasNewContent = false;
     updatePlayerUI();
     startContentObserver();
 
     try {
-      const mappedText = getReadableText();
-      if (!mappedText || mappedText.length < 1) { alert(getUiString('no_text')); return; }
+      const mappedText = await getReadableTextAsync();
+      if (!mappedText || mappedText.length < 1) {
+        alert(getUiString('no_text'));
+        return;
+      }
       const chunks = splitToChunks(mappedText, 220);
       lastReadMode = 'page';
       speakChunksSequentially(chunks, fromIndex || 0);
     } catch (e) {
       console.error('readPage error', e);
       alert(getUiString('error_start'));
+    } finally {
+      setButtonLoading(btnRead, false);
     }
   }
 
-  function readSelection(fromIndex = 0) {
+  async function readSelection(fromIndex = 0) {
     if (state.minimized) {
       state.minimized = false;
       safeSave(state);
       applyUI();
     }
+    setButtonLoading(btnReadSelection, true);
 
     try {
       const selText = window.getSelection().toString().trim();
@@ -1025,6 +1059,8 @@
       }
     } catch (e) {
       console.error('readSelection error', e);
+    } finally {
+      setButtonLoading(btnReadSelection, false);
     }
   }
 
