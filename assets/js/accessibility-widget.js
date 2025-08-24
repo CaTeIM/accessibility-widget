@@ -1,15 +1,16 @@
-// Accessibility Widget - v1.8 (Dynamic Theme & Contextual Reader)
+// Accessibility Widget - v1.9 (Architecture Refactor)
 // Author: CaTeIM
 // Last update: 2025-08-23
 // Features & Fixes:
-// - NEW: Dynamic Theme Engine automatically adapts the widget's appearance to the host site's colors.
-// - NEW: Contextual Reader announces the type of element (e.g., "Button", "Link") before its text.
-// - NEW: Visual highlighter that follows the spoken text on the page.
-// - NEW: Mini-player for playback control when the panel is minimized.
-// - IMPROVEMENT: Advanced text normalization correctly pronounces emails, URLs, and pauses.
-// - IMPROVEMENT: Smarter content detection prioritizes main content areas (<main>, <article>).
-// - REFACTOR: Overhauled text extraction and speech queue for higher accuracy and stability.
-// - UI: SVG icons for player controls and overall style enhancements.
+// - ARCHITECTURE: Switched to an asynchronous, non-blocking text extraction engine using TreeWalker and requestAnimationFrame to handle massive pages without freezing.
+// - NEW: Dynamic Content Detection using MutationObserver; the widget now detects new content loaded via AJAX and offers an option to refresh the reading queue.
+// - NEW: Now reads 'alt' text from <img> tags, providing richer context for images.
+// - REFACTOR: Implemented a robust "self-ignoring" mechanism by temporarily detaching the widget from the DOM during the text scan.
+// - FEATURE: Dynamic Theme Engine automatically adapts the widget's appearance to the host site's colors.
+// - FEATURE: Contextual Reader announces the type of element (e.g., "Button", "Link") before its text.
+// - FEATURE: Visual highlighter that follows the spoken text on the page.
+// - FEATURE: Mini-player for playback control when the panel is minimized.
+// - UI: Added loading spinners for asynchronous operations; SVG icons for all controls.
 // For a clean reset: localStorage.removeItem('aw_settings_v1'); location.reload();
 
 (function () {
@@ -699,7 +700,7 @@
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
         <div class="aw-small">Fonte: <span id="aw-font-size">${state.fontSize}px</span></div>
-        <div class="aw-small">v1.8</div>
+        <div class="aw-small">v1.9</div>
       </div>
     </div>
   `;
