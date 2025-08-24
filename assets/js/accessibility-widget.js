@@ -324,6 +324,9 @@
         if (el) {
           const mainMap = await nodeToTextAsync(el);
           if (mainMap.length > 5) {
+            if (headerMap.length > 0 && headerMap[headerMap.length - 1].text !== '.') {
+              headerMap.push({ text: '.', element: document.body });
+            }
             return headerMap.concat(mainMap);
           }
         }
