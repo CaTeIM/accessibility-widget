@@ -304,38 +304,52 @@
   // getReadableText - aggregates header + main or body
   // -------------------------
   async function getReadableTextAsync() {
+    const performScanWithoutWidget = async (scanElement) => {
+    const widgetRoot = document.getElementById('accessibility-widget');
+    let widgetParent = null;
+    let widgetNextSibling = null;
+      if (widgetRoot && scanElement.contains(widgetRoot)) {
+        widgetParent = widgetRoot.parentElement;
+        widgetNextSibling = widgetRoot.nextSibling;
+        widgetParent.removeChild(widgetRoot);
+      }
+      const mappedText = await nodeToTextAsync(scanElement);
+      if (widgetParent) {
+        widgetParent.insertBefore(widgetRoot, widgetNextSibling);
+      }
+      return mappedText;
+    };
     try {
       const headerCandidates = ['header', 'nav', '.navbar-custom', '.site-header', '#header'];
       let headerMap = [];
       for (let sel of headerCandidates) {
         const h = document.querySelector(sel);
         if (h) {
-          const map = await nodeToTextAsync(h);
+          const map = await performScanWithoutWidget(h);
           if (map.length > 2) {
             headerMap = map;
             break;
           }
         }
       }
-
       const selectors = ['main', 'article', '#content', '.content', '#profile-main-content'];
       for (let s of selectors) {
         const el = document.querySelector(s);
         if (el) {
-          const mainMap = await nodeToTextAsync(el);
+          const mainMap = await performScanWithoutWidget(el);
           if (mainMap.length > 5) {
             if (headerMap.length > 0) {
-              headerMap.push({ text: '.', element: document.body }); 
+              headerMap.push({ text: '.', element: document.body });
               return headerMap.concat(mainMap);
             }
             return mainMap;
           }
         }
       }
-      return await nodeToTextAsync(document.body) || [];
+      return await performScanWithoutWidget(document.body) || [];
     } catch (e) {
       console.warn('AccessibilityWidget.getReadableTextAsync error', e);
-      return await nodeToTextAsync(document.body) || [];
+      return await performScanWithoutWidget(document.body) || [];
     }
   }
 
