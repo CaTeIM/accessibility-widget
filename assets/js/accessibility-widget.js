@@ -245,7 +245,7 @@
       const mappedText = [];
       const blockTags = /^(P|H[1-6]|LI|DIV|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE|HEADER|FOOTER)$/;
       const ignoreTags = /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|SVG|VIDEO)$/;
-      const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/;
+      const interactiveTags = /^(BUTTON|A|INPUT|TEXTAREA|SELECT|IMG)$/;
       const walker = document.createTreeWalker(node, NodeFilter.SHOW_ALL, null, false);
       let currentNode = walker.nextNode();
       let nodesProcessed = 0;
@@ -264,12 +264,26 @@
           }
 
           if (currentNode.nodeType === Node.ELEMENT_NODE && (interactiveTags.test(tag) || currentNode.hasAttribute('role'))) {
-            let label = '';
-            try { label = currentNode.getAttribute('aria-label') || currentNode.getAttribute('title') || currentNode.getAttribute('placeholder') || currentNode.value || (currentNode.innerText || currentNode.textContent).trim(); } catch (e) {}
-            const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
-            let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
-            if (!/[.!?…]$/.test(spoken)) spoken += '.';
-            mappedText.push({ text: spoken, element: currentNode });
+            if (tag === 'IMG') {
+              try {
+                const altText = (currentNode.getAttribute('alt') || '').trim();
+                if (altText) {
+                  const prefix = getEffectiveLang().startsWith('pt') ? 'Imagem: ' : 'Image: ';
+                  let spoken = (prefix + altText).trim();
+                  if (!/[.!?…]$/.test(spoken)) spoken += '.';
+                  mappedText.push({ text: spoken, element: currentNode });
+                }
+              } catch (e) {}
+            } else {
+              let label = '';
+              try {
+                label = currentNode.getAttribute('aria-label') || currentNode.getAttribute('title') || currentNode.getAttribute('placeholder') || currentNode.value || (currentNode.innerText || currentNode.textContent).trim();
+              } catch (e) {}
+              const prefix = getInteractivePrefix(currentNode, tag.toLowerCase(), getEffectiveLang());
+              let spoken = (prefix + (label || (getEffectiveLang().startsWith('pt') ? 'sem rótulo' : 'unlabeled'))).trim();
+              if (!/[.!?…]$/.test(spoken)) spoken += '.';
+              mappedText.push({ text: spoken, element: currentNode });
+            }
           } else if (currentNode.nodeType === Node.TEXT_NODE) {
             const parentTag = (currentNode.parentElement.tagName || '').toUpperCase();
             if (!interactiveTags.test(parentTag) && !currentNode.parentElement.hasAttribute('role')) {
